@@ -1,0 +1,25 @@
+# Core Dependencies
+pydantic
+python-dotenv
+
+# LangChain Ecosystem
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langchain-huggingface
+
+# Vector Store & Search
+faiss-cpu
+tavily-python
+
+# Workflow Orchestration
+langgraph
+
+# Testing Dependencies
+pytest
+pytest-cov
+
+# Additional Utilities (if needed for enhanced functionality)
+# sentence-transformers  # Already included via langchain-huggingface
+# numpy  # Already included as dependency of other packages
