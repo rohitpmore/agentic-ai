@@ -4,7 +4,8 @@ Travel Agent System - Core Package
 Core workflow logic and state management.
 """
 
-from .workflow import TravelPlannerWorkflow
 from .state import TravelPlanState
+# Note: Workflow import commented until dependency resolution
+# from .workflow import TravelPlannerWorkflow
 
-__all__ = ["TravelPlannerWorkflow", "TravelPlanState"]
+__all__ = ["TravelPlanState"]
