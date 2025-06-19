@@ -69,6 +69,9 @@ python -m pytest tests/ --cov=multi_agent_system --cov-report=html
 # Navigate to assignment directory
 cd assignments/assignment-5/
 
+# Activate virtual environment
+source venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 
