@@ -1,0 +1,7 @@
+python-dotenv
+langchain_google_genai
+langchain
+tiktoken
+langgraph
+beautifulsoup4
+langchain_community

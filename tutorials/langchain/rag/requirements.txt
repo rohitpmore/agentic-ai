@@ -1,0 +1,8 @@
+langchain-text-splitters
+langchain-community
+langgraph
+langchain_google_genai
+langchain-openai
+langchain-core
+bs4
+beautifulsoup4

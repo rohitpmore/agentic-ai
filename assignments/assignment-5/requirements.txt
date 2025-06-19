@@ -1,0 +1,27 @@
+# Core Dependencies
+pydantic
+python-dotenv
+requests
+
+# LangChain Ecosystem
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+
+# Workflow Orchestration
+langgraph
+
+# Free API Dependencies
+# OpenWeatherMap - Weather data
+# Foursquare Places - Attractions, restaurants, activities
+# ExchangeRate-API - Currency conversion
+# No additional packages needed for these free APIs - using requests
+
+# Testing Dependencies
+pytest
+pytest-cov
+pytest-mock
+
+# Additional Utilities
+typing-extensions
