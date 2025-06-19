@@ -2,7 +2,7 @@
 Travel Planner Workflow - Parallel orchestration using LangGraph
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .state import TravelPlanState
@@ -246,10 +246,14 @@ class TravelPlannerWorkflow:
     
     def _create_success_response(self, state: TravelPlanState) -> Dict[str, Any]:
         """Create successful response from completed state"""
+        # Generate comprehensive trip summary
+        trip_summary = self._generate_comprehensive_summary(state)
+        
         return {
             "status": "success",
             "destination": state.destination,
             "travel_plan": state.itinerary_data,
+            "trip_summary": trip_summary,
             "data_sources": {
                 "weather": state.weather_data,
                 "attractions": state.attractions_data,
@@ -326,3 +330,265 @@ class TravelPlannerWorkflow:
         
         # Fallback - return None if no pattern found
         return None
+    
+    def _generate_comprehensive_summary(self, state: TravelPlanState) -> Dict[str, Any]:
+        """Generate comprehensive trip summary with all details"""
+        summary = {
+            "destination": state.destination,
+            "overview": {},
+            "cost_breakdown": {},
+            "highlights": [],
+            "recommendations": [],
+            "practical_info": {}
+        }
+        
+        try:
+            # Extract key information from itinerary
+            if state.itinerary_data:
+                itinerary = state.itinerary_data
+                
+                # Overview
+                summary["overview"] = {
+                    "total_days": itinerary.get("total_days", 0),
+                    "trip_dates": itinerary.get("trip_dates"),
+                    "total_cost": itinerary.get("total_cost", 0),
+                    "currency": state.currency or "USD",
+                    "daily_average": round(itinerary.get("total_cost", 0) / max(itinerary.get("total_days", 1), 1), 2)
+                }
+                
+                # Cost breakdown with detailed formatting
+                cost_breakdown = itinerary.get("cost_breakdown", {})
+                summary["cost_breakdown"] = self._format_cost_breakdown(cost_breakdown, state.currency or "USD")
+                
+                # Extract highlights from daily plans
+                summary["highlights"] = self._extract_trip_highlights(itinerary)
+                
+                # Combine recommendations from all sources
+                summary["recommendations"] = self._aggregate_recommendations(state)
+                
+                # Practical information
+                summary["practical_info"] = self._generate_practical_info(state)
+            
+            # Executive summary
+            summary["executive_summary"] = self._generate_executive_summary(summary, state)
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to generate comprehensive summary: {e}")
+            return {
+                "destination": state.destination,
+                "error": f"Summary generation failed: {str(e)}"
+            }
+    
+    def _format_cost_breakdown(self, cost_breakdown: Dict[str, float], currency: str) -> Dict[str, Any]:
+        """Format cost breakdown with detailed information"""
+        formatted = {
+            "currency": currency,
+            "categories": {},
+            "total": sum(cost_breakdown.values()),
+            "percentages": {}
+        }
+        
+        total = sum(cost_breakdown.values())
+        
+        for category, amount in cost_breakdown.items():
+            formatted["categories"][category] = {
+                "amount": round(amount, 2),
+                "percentage": round((amount / total * 100) if total > 0 else 0, 1),
+                "formatted": f"{currency} {amount:.2f}"
+            }
+            formatted["percentages"][category] = round((amount / total * 100) if total > 0 else 0, 1)
+        
+        formatted["total_formatted"] = f"{currency} {total:.2f}"
+        
+        return formatted
+    
+    def _extract_trip_highlights(self, itinerary: Dict[str, Any]) -> List[str]:
+        """Extract key highlights from the itinerary"""
+        highlights = []
+        
+        try:
+            daily_plans = itinerary.get("daily_plans", [])
+            
+            # Collect unique activities and top-rated places
+            all_activities = []
+            for day_plan in daily_plans:
+                for period in ["morning", "afternoon", "evening"]:
+                    activities = day_plan.get(period, [])
+                    all_activities.extend(activities)
+            
+            # Extract top highlights
+            unique_activities = []
+            seen_names = set()
+            
+            for activity in all_activities:
+                name = activity.get("name", "")
+                if name and name not in seen_names:
+                    unique_activities.append(activity)
+                    seen_names.add(name)
+            
+            # Sort by rating if available, take top 5
+            rated_activities = [a for a in unique_activities if a.get("rating")]
+            if rated_activities:
+                rated_activities.sort(key=lambda x: x.get("rating", 0), reverse=True)
+                highlights.extend([f"{a['name']} (Rating: {a['rating']}/10)" for a in rated_activities[:3]])
+            
+            # Add non-rated activities
+            other_activities = [a for a in unique_activities if not a.get("rating")]
+            highlights.extend([a["name"] for a in other_activities[:2]])
+            
+            return highlights[:5]  # Limit to 5 highlights
+            
+        except Exception as e:
+            logger.warning(f"Could not extract highlights: {e}")
+            return ["Explore the destination", "Discover local culture", "Enjoy local cuisine"]
+    
+    def _aggregate_recommendations(self, state: TravelPlanState) -> List[str]:
+        """Aggregate recommendations from all data sources"""
+        all_recommendations = []
+        
+        # From weather data
+        if state.weather_data and state.weather_data.get("travel_recommendations"):
+            all_recommendations.extend(state.weather_data["travel_recommendations"][:2])
+        
+        # From attractions data
+        if state.attractions_data and state.attractions_data.get("recommendations"):
+            all_recommendations.extend(state.attractions_data["recommendations"][:2])
+        
+        # From hotels data
+        if state.hotels_data and state.hotels_data.get("recommendations"):
+            all_recommendations.extend(state.hotels_data["recommendations"][:2])
+        
+        # From itinerary
+        if state.itinerary_data and state.itinerary_data.get("recommendations"):
+            all_recommendations.extend(state.itinerary_data["recommendations"][:3])
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_recommendations = []
+        for rec in all_recommendations:
+            if rec not in seen:
+                unique_recommendations.append(rec)
+                seen.add(rec)
+        
+        return unique_recommendations[:8]  # Limit to 8 recommendations
+    
+    def _generate_practical_info(self, state: TravelPlanState) -> Dict[str, Any]:
+        """Generate practical travel information"""
+        practical = {
+            "packing_list": [],
+            "important_notes": [],
+            "weather_summary": None,
+            "budget_tips": []
+        }
+        
+        try:
+            # From itinerary
+            if state.itinerary_data:
+                practical["packing_list"] = state.itinerary_data.get("packing_list", [])[:10]
+                practical["important_notes"] = state.itinerary_data.get("important_notes", [])[:5]
+            
+            # Weather summary
+            if state.weather_data:
+                practical["weather_summary"] = self._summarize_weather(state.weather_data)
+            
+            # Budget tips based on cost breakdown
+            if state.itinerary_data and state.itinerary_data.get("cost_breakdown"):
+                practical["budget_tips"] = self._generate_budget_tips(state.itinerary_data["cost_breakdown"])
+            
+            return practical
+            
+        except Exception as e:
+            logger.warning(f"Could not generate practical info: {e}")
+            return practical
+    
+    def _summarize_weather(self, weather_data: Dict[str, Any]) -> str:
+        """Create a concise weather summary"""
+        try:
+            current = weather_data.get("current_weather", {})
+            forecast = weather_data.get("forecast", [])
+            
+            if current:
+                temp = current.get("temperature", "Unknown")
+                desc = current.get("description", "")
+                summary = f"Current: {temp}°C, {desc.title()}"
+                
+                if forecast:
+                    temps = [f.get("temperature", {}).get("avg") for f in forecast if f.get("temperature", {}).get("avg")]
+                    if temps:
+                        avg_temp = sum(temps) / len(temps)
+                        summary += f". Forecast: {avg_temp:.0f}°C average"
+                
+                return summary
+            
+            return "Weather information available"
+            
+        except Exception:
+            return "Check local weather before travel"
+    
+    def _generate_budget_tips(self, cost_breakdown: Dict[str, float]) -> List[str]:
+        """Generate budget optimization tips"""
+        tips = []
+        
+        try:
+            total = sum(cost_breakdown.values())
+            
+            # Accommodation tips
+            accommodation = cost_breakdown.get("accommodation", 0)
+            if accommodation / total > 0.5:
+                tips.append("Consider alternative accommodations to reduce costs")
+            
+            # Activities tips
+            activities = cost_breakdown.get("activities", 0)
+            if activities / total > 0.3:
+                tips.append("Look for free walking tours and public attractions")
+            
+            # Meals tips
+            meals = cost_breakdown.get("meals", 0)
+            if meals / total > 0.25:
+                tips.append("Try local markets and street food for authentic, affordable meals")
+            
+            # General tips
+            tips.extend([
+                "Book attractions in advance for potential discounts",
+                "Use public transportation to save on travel costs"
+            ])
+            
+            return tips[:4]  # Limit to 4 tips
+            
+        except Exception:
+            return ["Plan ahead for better prices", "Look for local deals and discounts"]
+    
+    def _generate_executive_summary(self, summary: Dict[str, Any], state: TravelPlanState) -> str:
+        """Generate a concise executive summary of the trip"""
+        try:
+            destination = state.destination
+            overview = summary.get("overview", {})
+            days = overview.get("total_days", 0)
+            cost = overview.get("total_cost", 0)
+            currency = overview.get("currency", "USD")
+            
+            # Build summary text
+            exec_summary = f"A {days}-day trip to {destination} with an estimated total cost of {currency} {cost:.0f}. "
+            
+            # Add highlights
+            highlights = summary.get("highlights", [])
+            if highlights:
+                exec_summary += f"Key highlights include {', '.join(highlights[:2])}. "
+            
+            # Add practical note
+            successful_sources = state.get_successful_data_sources()
+            if len(successful_sources) >= 2:
+                exec_summary += f"Plan includes comprehensive information from {len(successful_sources)} data sources. "
+            
+            # Add recommendation note
+            recommendations = summary.get("recommendations", [])
+            if recommendations:
+                exec_summary += f"Follow {len(recommendations)} personalized recommendations for the best experience."
+            
+            return exec_summary
+            
+        except Exception as e:
+            logger.warning(f"Could not generate executive summary: {e}")
+            return f"Complete travel plan for {state.destination} with detailed itinerary and cost breakdown."
