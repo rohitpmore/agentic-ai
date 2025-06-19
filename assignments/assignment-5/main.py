@@ -6,27 +6,29 @@ This script provides a command-line interface to interact with the travel planni
 """
 
 import sys
+import os
 import argparse
 from typing import Dict, Any
 import json
 import logging
 from travel_agent_system.core.workflow import TravelPlannerWorkflow
 from travel_agent_system.utils.formatters import display_trip_summary
-from config import setup_logging, config
+from config import config
 
 # Add the current directory to the Python path for imports
-sys.path.append('.')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Handle import errors gracefully for testing
+# Import modules with error handling
 try:
     from travel_agent_system.core.workflow import TravelPlannerWorkflow
-except Exception as e:
-    print(f"❌ Import Error: {e}")
-    print("💡 This might be due to missing dependencies or API keys")
+    from travel_agent_system.utils.formatters import display_trip_summary
+except ImportError as e:
+    print(f"Import error: {e}")
+    print("Some modules may not be available. Running in limited mode.")
     TravelPlannerWorkflow = None
 
 # Setup logging
-setup_logging()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def check_api_keys():

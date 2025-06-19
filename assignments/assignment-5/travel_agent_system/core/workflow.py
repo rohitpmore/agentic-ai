@@ -287,29 +287,95 @@ class TravelPlannerWorkflow:
         Returns:
             Travel plan response
         """
-        # Simple query parser - extract destination from question
-        # In a real implementation, this would use LLM for parsing
-        destination = self._extract_destination_from_query(question)
+        # Enhanced query parser - extract destination, budget, duration, etc.
+        parsed_request = self._parse_travel_query(question)
         
-        if not destination:
+        if not parsed_request.get("destination"):
             return {
                 "status": "error",
                 "errors": ["Could not extract destination from query"],
                 "question": question
             }
         
-        # Create basic travel request
+        # Process the request
+        return self.process_travel_request(parsed_request)
+    
+    def _parse_travel_query(self, question: str) -> Dict[str, Any]:
+        """Enhanced parsing of natural language travel queries"""
+        import re
+        
+        question_lower = question.lower()
         travel_request = {
-            "destination": destination,
             "preferences": {"pace": "moderate"}
         }
         
-        # Process the request
-        return self.process_travel_request(travel_request)
+        # Extract destination
+        destination = self._extract_destination_from_query(question)
+        if destination:
+            travel_request["destination"] = destination
+        
+        # Extract duration (days)
+        duration_patterns = [
+            r'(\d+)[\s-]*day[s]?',
+            r'(\d+)[\s-]*night[s]?',
+            r'for\s+(\d+)\s+days?',
+            r'(\d+)[\s-]*week[s]?'
+        ]
+        
+        for pattern in duration_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                days = int(match.group(1))
+                if 'week' in pattern:
+                    days *= 7
+                elif 'night' in pattern:
+                    days += 1  # nights + 1 = days
+                
+                # Generate dates for the duration
+                from datetime import datetime, timedelta
+                start_date = datetime.now() + timedelta(days=7)  # Default start in a week
+                end_date = start_date + timedelta(days=days-1)
+                
+                travel_request["travel_dates"] = {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat()
+                }
+                break
+        
+        # Extract budget
+        budget_patterns = [
+            r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)',  # $2000, $2,000, $2000.00
+            r'(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:dollars?|usd|$)',  # 2000 dollars
+            r'budget\s+of\s+\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',  # budget of $2000
+            r'with\s+\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*budget'  # with $2000 budget
+        ]
+        
+        for pattern in budget_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                budget_str = match.group(1).replace(',', '')
+                travel_request["budget"] = float(budget_str)
+                travel_request["currency"] = "USD"  # Default to USD
+                break
+        
+        # Extract currency if specified
+        currency_patterns = [
+            r'\b(usd|eur|gbp|jpy|cad|aud)\b',
+            r'\$([\w]{3})\b'
+        ]
+        
+        for pattern in currency_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                travel_request["currency"] = match.group(1).upper()
+                break
+        
+        return travel_request
     
     def _extract_destination_from_query(self, question: str) -> Optional[str]:
         """Extract destination from natural language query"""
-        # Simple extraction - look for common patterns
+        import re
+        
         question_lower = question.lower()
         
         # Common patterns: "trip to X", "visit X", "plan X", "travel to X"
@@ -323,10 +389,21 @@ class TravelPlannerWorkflow:
                 start_idx = question_lower.find(pattern) + len(pattern)
                 # Extract the next word(s) as destination
                 remaining = question[start_idx:].strip()
-                # Take up to 3 words as destination
-                words = remaining.split()[:3]
+                
+                # Stop at common words that indicate end of destination
+                stop_words = ["with", "for", "in", "on", "during", "having", "budget", "days", "week", "month"]
+                
+                words = []
+                for word in remaining.split():
+                    clean_word = word.rstrip(".,!?")
+                    if clean_word.lower() in stop_words:
+                        break
+                    words.append(clean_word)
+                    if len(words) >= 3:  # Limit to max 3 words for destination
+                        break
+                
                 if words:
-                    return " ".join(words).rstrip(".,!?")
+                    return " ".join(words)
         
         # Fallback - return None if no pattern found
         return None

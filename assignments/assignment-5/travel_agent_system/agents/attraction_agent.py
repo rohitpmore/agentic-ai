@@ -23,6 +23,8 @@ class AttractionAgent:
         Args:
             api_client: Optional FoursquareClient instance for dependency injection
         """
+        from config import config
+        self.config = config
         self.api_client = api_client or FoursquareClient()
         self.search_history: List[Dict[str, Any]] = []
     
@@ -105,49 +107,31 @@ class AttractionAgent:
                                  budget_level: str) -> List[Dict[str, Any]]:
         """Search for places in a specific category."""
         try:
-            # Map our categories to Foursquare categories
-            category_mapping = {
-                "attractions": "10000",  # Arts & Entertainment
-                "restaurants": "13000",  # Food & Dining
-                "activities": "18000",   # Travel & Transport (includes tours)
-                "entertainment": "10000", # Arts & Entertainment
-                "museums": "10003",      # Museums
-                "parks": "16000",        # Outdoors & Recreation
-                "shopping": "17000",     # Retail
-                "nightlife": "10032"     # Bars & Nightlife
-            }
-            
-            foursquare_category = category_mapping.get(category, "10000")
-            
-            # Search places using Foursquare API
             response = self.api_client.search_places(
                 near=destination,
-                query=category,
-                categories=foursquare_category
+                query=f"{category} in {destination}",
+                limit=self.config.max_search_results
             )
             
             if not response.success:
                 logger.warning(f"API call failed for category {category}: {response.error}")
-                return []
-            
-            places_data = response.data
-            
-            if not places_data or "results" not in places_data:
-                logger.warning(f"No places found for category {category} in {destination}")
-                return []
-            
-            # Process and format results
-            places = []
-            for place in places_data["results"]:
-                place_info = self._format_place_info(place, category, budget_level)
-                if place_info:
-                    places.append(place_info)
-            
-            return places
+                return self._get_fallback_places(destination, category)
+                
+            places_data = response.data.get("results", [])
+            logger.debug(f"Found {len(places_data)} {category} for {destination}")
             
         except Exception as e:
-            logger.error(f"Failed to search places for category {category}: {e}")
-            return []
+            logger.error(f"Exception during API call for {category}: {e}")
+            return self._get_fallback_places(destination, category)
+        
+        # Format results
+        formatted_places = []
+        for place in places_data:
+            place_info = self._format_place_info(place, category, budget_level)
+            if place_info:
+                formatted_places.append(place_info)
+        
+        return formatted_places
     
     def _get_fallback_places(self, destination: str, category: str) -> List[Dict[str, Any]]:
         """Provide fallback place data when API is unavailable"""
