@@ -9,6 +9,10 @@ import sys
 import argparse
 from typing import Dict, Any
 import json
+import logging
+from travel_agent_system.core.workflow import TravelPlannerWorkflow
+from travel_agent_system.utils.formatters import display_trip_summary
+from config import setup_logging, config
 
 # Add the current directory to the Python path for imports
 sys.path.append('.')
@@ -21,6 +25,28 @@ except Exception as e:
     print("💡 This might be due to missing dependencies or API keys")
     TravelPlannerWorkflow = None
 
+# Setup logging
+setup_logging()
+logger = logging.getLogger(__name__)
+
+def check_api_keys():
+    """Check for missing API keys and exit if any are not found."""
+    missing_keys = []
+    if not config.gemini_api_key:
+        missing_keys.append("GEMINI_API_KEY")
+    if not config.openweather_api_key:
+        missing_keys.append("OPENWEATHER_API_KEY")
+    if not config.foursquare_api_key:
+        missing_keys.append("FOURSQUARE_API_KEY")
+    if not config.exchangerate_api_key:
+        missing_keys.append("EXCHANGERATE_API_KEY")
+
+    if missing_keys:
+        logger.error("🛑 API Key Error: The following required API keys are missing:")
+        for key in missing_keys:
+            logger.error(f"  - {key}")
+        logger.error("Please add them to your .env file and try again.")
+        sys.exit(1)
 
 def print_banner():
     """Print the application banner."""
@@ -229,8 +255,8 @@ def setup_mode():
     
     print("🔧 Checking configuration...")
     try:
-        from config import TravelConfig
-        config = TravelConfig()
+        from config import Config
+        config = Config.from_env()
         print("✅ Configuration loaded")
         
         # Check API keys
@@ -325,6 +351,9 @@ Examples:
     
     args = parser.parse_args()
     
+    # Always check for API keys first
+    check_api_keys()
+
     # Print banner unless suppressed
     if not args.no_banner:
         print_banner()

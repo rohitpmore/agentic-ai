@@ -120,11 +120,17 @@ class AttractionAgent:
             foursquare_category = category_mapping.get(category, "10000")
             
             # Search places using Foursquare API
-            places_data = self.api_client.search_places(
-                location=destination,
-                categories=foursquare_category,
-                limit=10  # Limit results to avoid API quota issues
+            response = self.api_client.search_places(
+                near=destination,
+                query=category,
+                categories=foursquare_category
             )
+            
+            if not response.success:
+                logger.warning(f"API call failed for category {category}: {response.error}")
+                return []
+            
+            places_data = response.data
             
             if not places_data or "results" not in places_data:
                 logger.warning(f"No places found for category {category} in {destination}")
@@ -143,6 +149,33 @@ class AttractionAgent:
             logger.error(f"Failed to search places for category {category}: {e}")
             return []
     
+    def _get_fallback_places(self, destination: str, category: str) -> List[Dict[str, Any]]:
+        """Provide fallback place data when API is unavailable"""
+        fallback_data = {
+            "attractions": [
+                {"name": f"{destination} City Center", "category": "attractions", "rating": 8.5, "price_level": "free"},
+                {"name": f"Historical District", "category": "attractions", "rating": 8.0, "price_level": "free"},
+                {"name": f"{destination} Museum", "category": "attractions", "rating": 7.5, "price_level": "medium"}
+            ],
+            "restaurants": [
+                {"name": f"Local {destination} Restaurant", "category": "restaurants", "rating": 8.0, "price_level": "medium"},
+                {"name": f"Traditional Cuisine", "category": "restaurants", "rating": 7.8, "price_level": "medium"},
+                {"name": f"Street Food Market", "category": "restaurants", "rating": 8.2, "price_level": "low"}
+            ],
+            "activities": [
+                {"name": f"Walking Tour", "category": "activities", "rating": 8.3, "price_level": "low"},
+                {"name": f"Local Market Visit", "category": "activities", "rating": 7.9, "price_level": "free"},
+                {"name": f"Cultural Experience", "category": "activities", "rating": 8.1, "price_level": "medium"}
+            ],
+            "entertainment": [
+                {"name": f"{destination} Theater", "category": "entertainment", "rating": 8.0, "price_level": "high"},
+                {"name": f"Live Music Venue", "category": "entertainment", "rating": 7.7, "price_level": "medium"},
+                {"name": f"Local Nightlife", "category": "entertainment", "rating": 7.5, "price_level": "medium"}
+            ]
+        }
+        
+        return fallback_data.get(category, [])
+    
     def _format_place_info(self, place_data: Dict[str, Any], category: str, 
                           budget_level: str) -> Optional[Dict[str, Any]]:
         """Format place information from Foursquare API response."""
@@ -151,7 +184,7 @@ class AttractionAgent:
                 "name": place_data.get("name", "Unknown"),
                 "category": category,
                 "address": self._format_address(place_data.get("location", {})),
-                "rating": place_data.get("rating", 0) / 10 if place_data.get("rating") else None,  # Convert to 0-10 scale
+                "rating": place_data.get("rating"),  # Corrected: Rating is already on a 0-10 scale
                 "price_level": self._estimate_price_level(place_data, category),
                 "description": place_data.get("description", ""),
                 "website": place_data.get("website"),

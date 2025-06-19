@@ -4,7 +4,7 @@ API Client utilities for external services
 
 import requests
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from config import config
 
@@ -40,7 +40,7 @@ class BaseAPIClient:
         self._rate_limit()
         
         try:
-            url = f"{self.base_url}/{endpoint}"
+            url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
             response = requests.get(
                 url, 
                 params=params,
@@ -118,7 +118,7 @@ class FoursquareClient(BaseAPIClient):
         self._rate_limit()
         
         try:
-            url = f"{self.base_url}/{endpoint}"
+            url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
             headers = {
                 "Authorization": self.api_key,
                 "Accept": "application/json"
@@ -150,13 +150,14 @@ class FoursquareClient(BaseAPIClient):
                 error=f"Request failed: {str(e)}"
             )
     
-    def search_places(self, query: str, near: str, categories: str = None) -> APIResponse:
-        """Search for places near a location"""
+    def search_places(self, near: str, query: Optional[str] = None, categories: Optional[str] = None) -> APIResponse:
+        """Search for places near a location using Foursquare v3 API"""
         params = {
-            "query": query,
             "near": near,
             "limit": config.max_search_results
         }
+        if query:
+            params["query"] = query
         if categories:
             params["categories"] = categories
             
@@ -180,12 +181,12 @@ class ExchangeRateClient(BaseAPIClient):
     
     def get_exchange_rates(self, base_currency: str = "USD") -> APIResponse:
         """Get exchange rates for a base currency"""
-        endpoint = f"{self.api_key}/latest/{base_currency}"
+        endpoint = f"/{self.api_key}/latest/{base_currency}"
         return self._make_request(endpoint)
     
     def convert_currency(self, from_currency: str, to_currency: str, amount: float) -> APIResponse:
         """Convert amount from one currency to another"""
-        endpoint = f"{self.api_key}/pair/{from_currency}/{to_currency}/{amount}"
+        endpoint = f"/{self.api_key}/pair/{from_currency}/{to_currency}/{amount}"
         return self._make_request(endpoint)
     
     def test_connection(self) -> bool:
@@ -194,8 +195,42 @@ class ExchangeRateClient(BaseAPIClient):
         return response.success
 
 
+class APIClientManager:
+    """Manager for all API clients - used for testing and coordination"""
+    
+    def __init__(self):
+        self.weather_client = OpenWeatherMapClient()
+        self.foursquare_client = FoursquareClient()
+        self.currency_client = ExchangeRateClient()
+    
+    def get_current_weather(self, city: str) -> Dict[str, Any]:
+        """Get current weather (wrapper for testing)"""
+        response = self.weather_client.get_current_weather(city)
+        return response.data if response.success else {}
+    
+    def search_places(self, near: str, category: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search places (wrapper for testing)"""
+        response = self.foursquare_client.search_places(
+            query=category, near=near, categories=category
+        )
+        return response.data.get("results", []) if response.success else []
+    
+    def get_exchange_rates(self, base_currency: str) -> Dict[str, Any]:
+        """Get exchange rates (wrapper for testing)"""
+        response = self.currency_client.get_exchange_rates(base_currency)
+        return response.data if response.success else {}
+    
+    def test_all_connections(self) -> Dict[str, bool]:
+        """Test all API connections"""
+        return {
+            "weather": self.weather_client.test_connection(),
+            "places": self.foursquare_client.test_connection(),
+            "currency": self.currency_client.test_connection()
+        }
+
+
 class APIClient:
-    """Main API client facade"""
+    """Main API client facade (legacy compatibility)"""
     
     def __init__(self):
         self.weather = OpenWeatherMapClient()
