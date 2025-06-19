@@ -132,3 +132,5 @@ models/
 secrets.json
 config.json
 credentials.json 
+# Ignore all virtual environment directories
+**/venv/
