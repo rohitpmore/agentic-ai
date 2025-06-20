@@ -22,6 +22,7 @@ class TravelPlanState(TypedDict):
     budget: NotRequired[Optional[float]]
     currency: NotRequired[Optional[str]]
     preferences: NotRequired[Optional[Dict[str, Any]]]
+    raw_query: NotRequired[Optional[str]]  # For LLM parsing of natural language queries
     
     # Agent processing status
     weather_processing: NotRequired[bool]
@@ -59,6 +60,7 @@ def create_initial_state(**kwargs) -> TravelPlanState:
         "budget": kwargs.get("budget"),
         "currency": kwargs.get("currency", "USD"),
         "preferences": kwargs.get("preferences", {}),
+        "raw_query": kwargs.get("raw_query"),
         
         # Agent processing status
         "weather_processing": False,

@@ -2,7 +2,6 @@
 LangGraph Node Functions - Individual node implementations for travel planning workflow
 """
 
-from typing import Dict, Any
 import logging
 
 from .graph_state import (
@@ -21,18 +20,62 @@ logger = logging.getLogger(__name__)
 
 def input_validation_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Validate input data and prepare for processing.
+    Enhanced input validation and query parsing for travel requests.
     
     Args:
         state: Current workflow state
         
     Returns:
-        TravelPlanState: Updated state after validation
+        TravelPlanState: Updated state after validation and enhancement
     """
-    logger.info("Starting input validation")
+    logger.info("Starting input validation and enhancement")
     
     try:
-        # Validate input data
+        # Check if we have query data that needs parsing FIRST (before validation)
+        raw_query = state.get("raw_query")  # May be set from query interface
+        if raw_query and not state.get("destination"):
+            # Parse the query using LLM + Pydantic approach (LLM-only, no regex fallback)
+            from ..utils.llm_query_parser import parse_travel_query
+            
+            logger.info(f"Parsing raw query with LLM: {raw_query}")
+            parsing_result = parse_travel_query(raw_query)
+            
+            if not parsing_result.success:
+                error_msg = parsing_result.error_message
+                logger.error(f"LLM query parsing failed: {error_msg}")
+                
+                # Provide helpful error message for users
+                if "LLM parsing service unavailable" in error_msg:
+                    helpful_msg = ("Natural language query parsing requires Gemini API. "
+                                 "Please either configure GEMINI_API_KEY or provide structured travel data "
+                                 "(destination, travel_dates, budget) directly.")
+                else:
+                    helpful_msg = f"Failed to understand travel query: {error_msg}"
+                
+                new_state = add_error(state, helpful_msg)
+                return new_state
+            
+            # Convert parsed query to travel request format
+            travel_request = parsing_result.query.to_travel_request()
+            
+            # Update state with parsed data
+            new_state = state.copy()
+            for key, value in travel_request.items():
+                if value is not None:
+                    new_state[key] = value
+            
+            # Re-validate after parsing
+            validation_errors = validate_input(new_state)
+            if validation_errors:
+                logger.error(f"Parsed data validation failed: {validation_errors}")
+                for error in validation_errors:
+                    new_state = add_error(new_state, f"Parsed validation: {error}")
+                return new_state
+            
+            logger.info(f"Successfully parsed query with LLM for destination: {new_state.get('destination')}")
+            return new_state
+        
+        # If no raw query to parse, do basic validation on existing data
         validation_errors = validate_input(state)
         
         if validation_errors:
@@ -53,9 +96,13 @@ def input_validation_node(state: TravelPlanState) -> TravelPlanState:
         return add_error(state, f"Input validation failed: {str(e)}")
 
 
+# Old string manipulation functions removed - replaced with LLM + Pydantic parsing
+# See travel_agent_system/utils/llm_query_parser.py for the new implementation
+
+
 def weather_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Weather analysis node - placeholder for Stage 2 implementation.
+    Weather analysis node - full WeatherAgent implementation.
     
     Args:
         state: Current workflow state
@@ -69,26 +116,34 @@ def weather_node(state: TravelPlanState) -> TravelPlanState:
         # Mark agent as processing
         new_state = mark_agent_processing(state, "weather")
         
-        # Placeholder implementation - will be replaced in Stage 2
-        weather_data = {
-            "status": "placeholder",
-            "message": "Weather node placeholder - will be implemented in Stage 2",
-            "destination": state.get("destination"),
-            "current_weather": {
-                "temperature": 20,
-                "description": "Pleasant",
-                "humidity": 60
-            },
-            "forecast": [
-                {"day": "Day 1", "temp": 22, "weather": "Sunny"},
-                {"day": "Day 2", "temp": 20, "weather": "Partly Cloudy"},
-                {"day": "Day 3", "temp": 18, "weather": "Light Rain"}
-            ]
-        }
+        # Get destination and travel dates from state
+        destination = state.get("destination")
+        travel_dates = state.get("travel_dates")
         
-        # Mark agent as complete
-        new_state = mark_agent_complete(new_state, "weather", weather_data)
-        logger.info("Weather analysis completed (placeholder)")
+        if not destination:
+            error_msg = "Destination is required for weather analysis"
+            logger.error(error_msg)
+            return mark_agent_error(state, "weather", error_msg)
+        
+        # Import and initialize WeatherAgent
+        from ..agents.weather_agent import WeatherAgent
+        weather_agent = WeatherAgent()
+        
+        # Perform weather analysis
+        weather_analysis = weather_agent.analyze_weather_for_travel(
+            destination=destination,
+            travel_dates=travel_dates
+        )
+        
+        # Check for errors in analysis
+        if "error" in weather_analysis:
+            error_msg = weather_analysis["error"]
+            logger.error(f"Weather analysis failed: {error_msg}")
+            return mark_agent_error(new_state, "weather", error_msg)
+        
+        # Mark agent as complete with results
+        new_state = mark_agent_complete(new_state, "weather", weather_analysis)
+        logger.info(f"Weather analysis completed for {destination}")
         
         return new_state
         
@@ -99,7 +154,7 @@ def weather_node(state: TravelPlanState) -> TravelPlanState:
 
 def attractions_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Attractions discovery node - placeholder for Stage 2 implementation.
+    Attractions discovery node - full AttractionAgent implementation.
     
     Args:
         state: Current workflow state
@@ -113,45 +168,47 @@ def attractions_node(state: TravelPlanState) -> TravelPlanState:
         # Mark agent as processing
         new_state = mark_agent_processing(state, "attractions")
         
-        # Placeholder implementation - will be replaced in Stage 2
-        destination = state.get("destination", "Unknown")
-        attractions_data = {
-            "status": "placeholder",
-            "message": "Attractions node placeholder - will be implemented in Stage 2",
-            "destination": destination,
-            "attractions": [
-                {
-                    "name": f"{destination} City Center",
-                    "category": "landmark",
-                    "rating": 8.5,
-                    "description": "Historic city center with beautiful architecture"
-                },
-                {
-                    "name": f"{destination} Museum",
-                    "category": "museum",
-                    "rating": 8.0,
-                    "description": "World-class museum with local history"
-                },
-                {
-                    "name": f"{destination} Park",
-                    "category": "park",
-                    "rating": 7.5,
-                    "description": "Beautiful park perfect for walking"
-                }
-            ],
-            "restaurants": [
-                {
-                    "name": f"Best Restaurant in {destination}",
-                    "category": "fine_dining",
-                    "rating": 9.0,
-                    "price_range": "$$$$"
-                }
-            ]
-        }
+        # Get destination and budget info from state
+        destination = state.get("destination")
+        budget = state.get("budget")
+        preferences = state.get("preferences", {})
         
-        # Mark agent as complete
-        new_state = mark_agent_complete(new_state, "attractions", attractions_data)
-        logger.info("Attractions discovery completed (placeholder)")
+        if not destination:
+            error_msg = "Destination is required for attractions discovery"
+            logger.error(error_msg)
+            return mark_agent_error(state, "attractions", error_msg)
+        
+        # Determine budget level
+        if budget:
+            if budget <= 500:
+                budget_level = "low"
+            elif budget <= 1500:
+                budget_level = "medium"
+            else:
+                budget_level = "high"
+        else:
+            budget_level = "medium"
+        
+        # Import and initialize AttractionAgent
+        from ..agents.attraction_agent import AttractionAgent
+        attraction_agent = AttractionAgent()
+        
+        # Discover attractions
+        attractions_discovery = attraction_agent.discover_attractions(
+            destination=destination,
+            categories=["attractions", "restaurants", "activities", "entertainment"],
+            budget_level=budget_level
+        )
+        
+        # Check for errors in discovery
+        if "error" in attractions_discovery:
+            error_msg = attractions_discovery["error"]
+            logger.error(f"Attractions discovery failed: {error_msg}")
+            return mark_agent_error(new_state, "attractions", error_msg)
+        
+        # Mark agent as complete with results
+        new_state = mark_agent_complete(new_state, "attractions", attractions_discovery)
+        logger.info(f"Attractions discovery completed for {destination}")
         
         return new_state
         
@@ -162,7 +219,7 @@ def attractions_node(state: TravelPlanState) -> TravelPlanState:
 
 def hotels_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Hotel search node - placeholder for Stage 2 implementation.
+    Hotel search node - full HotelAgent implementation.
     
     Args:
         state: Current workflow state
@@ -176,43 +233,57 @@ def hotels_node(state: TravelPlanState) -> TravelPlanState:
         # Mark agent as processing
         new_state = mark_agent_processing(state, "hotels")
         
-        # Placeholder implementation - will be replaced in Stage 2
-        destination = state.get("destination", "Unknown")
-        budget = state.get("budget", 1000)
+        # Get destination, budget, and travel dates from state
+        destination = state.get("destination")
+        budget = state.get("budget")
+        travel_dates = state.get("travel_dates")
+        preferences = state.get("preferences", {})
         
-        hotels_data = {
-            "status": "placeholder",
-            "message": "Hotels node placeholder - will be implemented in Stage 2",
-            "destination": destination,
-            "budget": budget,
-            "hotels": [
-                {
-                    "name": f"Luxury Hotel {destination}",
-                    "category": "luxury",
-                    "price_per_night": min(200, budget/5),
-                    "rating": 9.0,
-                    "amenities": ["WiFi", "Pool", "Spa"]
-                },
-                {
-                    "name": f"Business Hotel {destination}",
-                    "category": "business",
-                    "price_per_night": min(120, budget/8),
-                    "rating": 8.0,
-                    "amenities": ["WiFi", "Gym", "Conference Room"]
-                },
-                {
-                    "name": f"Budget Inn {destination}",
-                    "category": "budget",
-                    "price_per_night": min(60, budget/15),
-                    "rating": 7.0,
-                    "amenities": ["WiFi", "Breakfast"]
-                }
-            ]
-        }
+        if not destination:
+            error_msg = "Destination is required for hotel search"
+            logger.error(error_msg)
+            return mark_agent_error(state, "hotels", error_msg)
         
-        # Mark agent as complete
-        new_state = mark_agent_complete(new_state, "hotels", hotels_data)
-        logger.info("Hotel search completed (placeholder)")
+        # Prepare budget range if budget is provided
+        budget_range = None
+        if budget:
+            # Assume 40% of total budget goes to accommodation
+            accommodation_budget = budget * 0.4
+            # Calculate days to get nightly budget
+            days = 3  # Default
+            if travel_dates and travel_dates.get("start_date") and travel_dates.get("end_date"):
+                try:
+                    from datetime import datetime
+                    start = datetime.fromisoformat(travel_dates["start_date"].replace("Z", "+00:00"))
+                    end = datetime.fromisoformat(travel_dates["end_date"].replace("Z", "+00:00"))
+                    days = max(1, (end - start).days)
+                except Exception:
+                    pass
+            
+            max_per_night = accommodation_budget / days
+            budget_range = {"min": max_per_night * 0.5, "max": max_per_night}
+        
+        # Import and initialize HotelAgent
+        from ..agents.hotel_agent import HotelAgent
+        hotel_agent = HotelAgent()
+        
+        # Search for hotels
+        hotel_search_results = hotel_agent.search_hotels(
+            destination=destination,
+            budget_range=budget_range,
+            travel_dates=travel_dates,
+            preferences=preferences
+        )
+        
+        # Check for errors in search
+        if "error" in hotel_search_results:
+            error_msg = hotel_search_results["error"]
+            logger.error(f"Hotel search failed: {error_msg}")
+            return mark_agent_error(new_state, "hotels", error_msg)
+        
+        # Mark agent as complete with results
+        new_state = mark_agent_complete(new_state, "hotels", hotel_search_results)
+        logger.info(f"Hotel search completed for {destination}")
         
         return new_state
         
@@ -223,33 +294,48 @@ def hotels_node(state: TravelPlanState) -> TravelPlanState:
 
 def data_aggregation_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Aggregate data from parallel nodes and prepare for itinerary creation.
+    Execute parallel agents and aggregate their data.
+    This node handles the parallel execution of weather, attractions, and hotels agents.
     
     Args:
         state: Current workflow state
         
     Returns:
-        TravelPlanState: Updated state with aggregated data
+        TravelPlanState: Updated state with aggregated data from all agents
     """
-    logger.info("Starting data aggregation")
+    logger.info("Starting parallel agent execution and data aggregation")
     
     try:
+        # Execute all parallel agents
+        new_state = state.copy()
+        
+        # Execute weather agent
+        logger.info("Executing weather agent...")
+        new_state = weather_node(new_state)
+        
+        # Execute attractions agent
+        logger.info("Executing attractions agent...")
+        new_state = attractions_node(new_state)
+        
+        # Execute hotels agent  
+        logger.info("Executing hotels agent...")
+        new_state = hotels_node(new_state)
+        
         # Get aggregated data
-        aggregated_data = get_aggregated_data(state)
+        aggregated_data = get_aggregated_data(new_state)
         
         # Log successful data sources
         successful_sources = []
-        if state.get("weather_data"):
+        if new_state.get("weather_data"):
             successful_sources.append("weather")
-        if state.get("attractions_data"):
+        if new_state.get("attractions_data"):
             successful_sources.append("attractions")
-        if state.get("hotels_data"):
+        if new_state.get("hotels_data"):
             successful_sources.append("hotels")
         
         logger.info(f"Data aggregation complete. Successful sources: {successful_sources}")
         
         # Add processing stage
-        new_state = state.copy()
         current_stages = new_state.get("processing_stages", [])
         new_state["processing_stages"] = current_stages + ["data_aggregation_completed"]
         
@@ -262,7 +348,7 @@ def data_aggregation_node(state: TravelPlanState) -> TravelPlanState:
 
 def itinerary_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Itinerary generation node - placeholder for Stage 2 implementation.
+    Itinerary generation node - full ItineraryAgent implementation.
     
     Args:
         state: Current workflow state
@@ -279,59 +365,48 @@ def itinerary_node(state: TravelPlanState) -> TravelPlanState:
         # Get aggregated data
         aggregated_data = get_aggregated_data(new_state)
         
-        # Placeholder implementation - will be replaced in Stage 2
-        destination = aggregated_data.get("destination", "Unknown")
-        budget = aggregated_data.get("budget", 1000)
+        # Validate we have minimum required data
+        if not aggregated_data.get("destination"):
+            error_msg = "Destination is required for itinerary generation"
+            logger.error(error_msg)
+            return mark_agent_error(new_state, "itinerary", error_msg)
         
-        itinerary_data = {
-            "status": "placeholder",
-            "message": "Itinerary node placeholder - will be implemented in Stage 2",
-            "destination": destination,
-            "budget": budget,
-            "total_days": 3,
-            "daily_itinerary": [
-                {
-                    "day": 1,
-                    "title": f"Arrival in {destination}",
-                    "activities": [
-                        {"time": "09:00", "activity": "Check-in to hotel", "cost": 0},
-                        {"time": "12:00", "activity": "Lunch at local restaurant", "cost": 25},
-                        {"time": "14:00", "activity": "City center exploration", "cost": 0},
-                        {"time": "19:00", "activity": "Welcome dinner", "cost": 50}
-                    ]
-                },
-                {
-                    "day": 2,
-                    "title": f"Exploring {destination}",
-                    "activities": [
-                        {"time": "09:00", "activity": "Museum visit", "cost": 15},
-                        {"time": "12:00", "activity": "Lunch in the park", "cost": 20},
-                        {"time": "15:00", "activity": "Shopping district", "cost": 100},
-                        {"time": "19:00", "activity": "Fine dining experience", "cost": 80}
-                    ]
-                },
-                {
-                    "day": 3,
-                    "title": "Departure",
-                    "activities": [
-                        {"time": "09:00", "activity": "Final breakfast", "cost": 15},
-                        {"time": "11:00", "activity": "Last-minute shopping", "cost": 50},
-                        {"time": "14:00", "activity": "Check-out and departure", "cost": 0}
-                    ]
-                }
-            ],
-            "cost_breakdown": {
-                "accommodation": budget * 0.4,
-                "meals": budget * 0.3,
-                "activities": budget * 0.2,
-                "transportation": budget * 0.1
-            },
-            "total_cost": budget
-        }
+        # Prepare preferences from state
+        preferences = aggregated_data.get("preferences", {})
+        if aggregated_data.get("budget"):
+            preferences["budget"] = aggregated_data["budget"]
+        if aggregated_data.get("currency"):
+            preferences["currency"] = aggregated_data["currency"]
+        if aggregated_data.get("travel_dates"):
+            preferences["travel_dates"] = aggregated_data["travel_dates"]
         
-        # Mark agent as complete
-        new_state = mark_agent_complete(new_state, "itinerary", itinerary_data)
-        logger.info("Itinerary generation completed (placeholder)")
+        # Import and initialize ItineraryAgent with tools
+        from ..agents.itinerary_agent import ItineraryAgent
+        from ..tools.cost_calculator import CostCalculator
+        from ..tools.currency_converter import CurrencyConverter
+        
+        cost_calculator = CostCalculator()
+        currency_converter = CurrencyConverter()
+        itinerary_agent = ItineraryAgent(
+            cost_calculator=cost_calculator,
+            currency_converter=currency_converter
+        )
+        
+        # Create comprehensive itinerary
+        itinerary_result = itinerary_agent.create_itinerary(
+            trip_data=aggregated_data,
+            preferences=preferences
+        )
+        
+        # Check for errors in itinerary creation
+        if "error" in itinerary_result:
+            error_msg = itinerary_result["error"]
+            logger.error(f"Itinerary generation failed: {error_msg}")
+            return mark_agent_error(new_state, "itinerary", error_msg)
+        
+        # Mark agent as complete with results
+        new_state = mark_agent_complete(new_state, "itinerary", itinerary_result)
+        logger.info(f"Itinerary generation completed for {aggregated_data.get('destination')}")
         
         return new_state
         

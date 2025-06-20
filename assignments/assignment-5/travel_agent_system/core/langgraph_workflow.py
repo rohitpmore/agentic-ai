@@ -13,9 +13,7 @@ from .graph_state import (
     is_parallel_phase_complete,
     has_sufficient_data_for_itinerary,
     mark_complete,
-    get_processing_summary,
-    error_reducer,
-    processing_stages_reducer
+    get_processing_summary
 )
 
 import logging
@@ -37,12 +35,9 @@ class LangGraphTravelWorkflow:
     
     def _build_graph(self):
         """Build the StateGraph workflow"""
-        # Create StateGraph with state schema
+        # Create StateGraph with state schema  
+        # Note: Reducers are handled in the state schema definition via TypedDict annotations
         workflow = StateGraph(TravelPlanState)
-        
-        # Add state reducers for lists
-        workflow.add_reducer("errors", error_reducer)
-        workflow.add_reducer("processing_stages", processing_stages_reducer)
         
         # Import node functions (will be created in nodes.py)
         from .nodes import (
@@ -58,10 +53,7 @@ class LangGraphTravelWorkflow:
         
         # Add nodes to the graph
         workflow.add_node("input_validation", input_validation_node)
-        workflow.add_node("weather", weather_node)
-        workflow.add_node("attractions", attractions_node)
-        workflow.add_node("hotels", hotels_node)
-        workflow.add_node("data_aggregation", data_aggregation_node)
+        workflow.add_node("data_aggregation", data_aggregation_node)  # Handles parallel execution internally
         workflow.add_node("itinerary", itinerary_node)
         workflow.add_node("summary_generation", summary_generation_node)
         workflow.add_node("error_handling", error_handling_node)
@@ -70,20 +62,20 @@ class LangGraphTravelWorkflow:
         workflow.set_entry_point("input_validation")
         
         # Add edges for workflow flow
-        # Input validation -> parallel data gathering
+        # Input validation -> data aggregation (with error check) or error handling
         workflow.add_conditional_edges(
             "input_validation",
             self._route_after_validation,
             {
-                "parallel_data_gathering": ["weather", "attractions", "hotels"],
+                "continue": "data_aggregation",
                 "error": "error_handling"
             }
         )
         
-        # Parallel nodes -> data aggregation
-        workflow.add_edge("weather", "data_aggregation")
-        workflow.add_edge("attractions", "data_aggregation")
-        workflow.add_edge("hotels", "data_aggregation")
+        # For parallel execution, we'll trigger all three agents from data_aggregation node
+        # Data aggregation will handle calling the parallel agents and then aggregating results
+        
+        # Data aggregation handles parallel execution internally, then routes to itinerary
         
         # Data aggregation -> itinerary or error handling
         workflow.add_conditional_edges(
@@ -107,7 +99,7 @@ class LangGraphTravelWorkflow:
         # Compile the graph
         self.graph = workflow.compile(checkpointer=self.checkpointer)
     
-    def _route_after_validation(self, state: TravelPlanState) -> Literal["parallel_data_gathering", "error"]:
+    def _route_after_validation(self, state: TravelPlanState) -> Literal["continue", "error"]:
         """
         Route after input validation.
         
@@ -115,7 +107,7 @@ class LangGraphTravelWorkflow:
             state: Current workflow state
             
         Returns:
-            str: Next route ("parallel_data_gathering" or "error")
+            str: Next route ("continue" or "error")
         """
         validation_errors = validate_input(state)
         
@@ -123,8 +115,8 @@ class LangGraphTravelWorkflow:
             logger.error(f"Input validation failed: {validation_errors}")
             return "error"
         
-        logger.info("Input validation passed, starting parallel data gathering")
-        return "parallel_data_gathering"
+        logger.info("Input validation passed, continuing to data aggregation")
+        return "continue"
     
     def _route_after_data_aggregation(self, state: TravelPlanState) -> Literal["create_itinerary", "error"]:
         """
@@ -244,65 +236,18 @@ class LangGraphTravelWorkflow:
     def _parse_query(self, query: str) -> Dict[str, Any]:
         """
         Parse natural language travel query into structured data.
-        This is a placeholder that will use existing query parsing logic.
         
         Args:
             query: Natural language travel query
             
         Returns:
-            Dict[str, Any]: Parsed travel parameters
+            Dict[str, Any]: Parsed travel parameters with raw_query for LLM processing
         """
-        # Placeholder implementation - will integrate existing query parser
-        # from the current workflow.py
-        import re
-        
-        parsed_data = {}
-        
-        # Simple destination extraction
-        destination_patterns = [
-            r"to\s+([A-Za-z\s]+?)(?:\s+for|\s+with|\s*$)",
-            r"visit\s+([A-Za-z\s]+?)(?:\s+for|\s+with|\s*$)",
-            r"trip\s+to\s+([A-Za-z\s]+?)(?:\s+for|\s+with|\s*$)"
-        ]
-        
-        for pattern in destination_patterns:
-            match = re.search(pattern, query, re.IGNORECASE)
-            if match:
-                parsed_data["destination"] = match.group(1).strip()
-                break
-        
-        # Simple budget extraction
-        budget_match = re.search(r"\$(\d+(?:,\d{3})*(?:\.\d{2})?)", query)
-        if budget_match:
-            budget_str = budget_match.group(1).replace(",", "")
-            parsed_data["budget"] = float(budget_str)
-        
-        # Simple duration extraction
-        duration_patterns = [
-            r"(\d+)[-\s]*day",
-            r"(\d+)[-\s]*week"
-        ]
-        
-        for pattern in duration_patterns:
-            match = re.search(pattern, query, re.IGNORECASE)
-            if match:
-                days = int(match.group(1))
-                if "week" in match.group(0).lower():
-                    days *= 7
-                
-                # Create simple travel dates (placeholder)
-                from datetime import datetime, timedelta
-                start_date = datetime.now() + timedelta(days=7)  # Start in a week
-                end_date = start_date + timedelta(days=days)
-                
-                parsed_data["travel_dates"] = {
-                    "start_date": start_date.strftime("%Y-%m-%d"),
-                    "end_date": end_date.strftime("%Y-%m-%d")
-                }
-                break
-        
-        logger.info(f"Parsed query data: {parsed_data}")
-        return parsed_data
+        # Instead of parsing here, we'll pass the raw query to the input validation node
+        # which will use the LLM + Pydantic parser for robust natural language understanding
+        return {
+            "raw_query": query  # This will trigger LLM parsing in input_validation_node
+        }
     
     def _format_results(self, state: TravelPlanState) -> Dict[str, Any]:
         """
