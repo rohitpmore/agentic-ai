@@ -5,6 +5,7 @@ LangGraph Workflow Implementation - Main StateGraph workflow for travel planning
 from typing import Dict, Any, Literal
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
 
 from .graph_state import (
     TravelPlanState, 
@@ -31,6 +32,11 @@ class LangGraphTravelWorkflow:
         """Initialize the LangGraph workflow"""
         self.graph = None
         self.checkpointer = MemorySaver()
+        
+        # Initialize ToolNode with travel tools
+        from ..tools.langgraph_tools import TRAVEL_TOOLS
+        self.tool_node = ToolNode(TRAVEL_TOOLS)
+        
         self._build_graph()
     
     def _build_graph(self):
@@ -96,8 +102,11 @@ class LangGraphTravelWorkflow:
         # Error handling -> END
         workflow.add_edge("error_handling", END)
         
-        # Compile the graph
-        self.graph = workflow.compile(checkpointer=self.checkpointer)
+        # Compile the graph with enhanced checkpointing
+        self.graph = workflow.compile(
+            checkpointer=self.checkpointer,
+            debug=True  # Enable debugging for better error tracking
+        )
     
     def _route_after_validation(self, state: TravelPlanState) -> Literal["continue", "error"]:
         """

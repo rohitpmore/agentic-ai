@@ -380,17 +380,13 @@ def itinerary_node(state: TravelPlanState) -> TravelPlanState:
         if aggregated_data.get("travel_dates"):
             preferences["travel_dates"] = aggregated_data["travel_dates"]
         
-        # Import and initialize ItineraryAgent with tools
+        # Import and initialize ItineraryAgent with LangGraph tools
         from ..agents.itinerary_agent import ItineraryAgent
-        from ..tools.cost_calculator import CostCalculator
-        from ..tools.currency_converter import CurrencyConverter
+        from ..tools.langgraph_tools import TRAVEL_TOOLS
+        from langgraph.prebuilt import ToolNode
         
-        cost_calculator = CostCalculator()
-        currency_converter = CurrencyConverter()
-        itinerary_agent = ItineraryAgent(
-            cost_calculator=cost_calculator,
-            currency_converter=currency_converter
-        )
+        tool_node = ToolNode(TRAVEL_TOOLS)
+        itinerary_agent = ItineraryAgent(tool_node=tool_node)
         
         # Create comprehensive itinerary
         itinerary_result = itinerary_agent.create_itinerary(

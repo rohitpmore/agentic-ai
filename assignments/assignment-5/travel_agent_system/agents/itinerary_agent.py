@@ -5,8 +5,7 @@ Itinerary Agent - Day-by-day trip planning and integration
 from typing import Dict, Any, Optional, List
 import logging
 from datetime import datetime, timedelta
-from ..tools.cost_calculator import CostCalculator
-from ..tools.currency_converter import CurrencyConverter
+from langgraph.prebuilt import ToolNode
 
 logger = logging.getLogger(__name__)
 
@@ -18,17 +17,14 @@ class ItineraryAgent:
     Uses tools for cost calculations and currency conversions.
     """
     
-    def __init__(self, cost_calculator: Optional[CostCalculator] = None,
-                 currency_converter: Optional[CurrencyConverter] = None):
+    def __init__(self, tool_node: Optional[ToolNode] = None):
         """
-        Initialize itinerary agent
+        Initialize itinerary agent with LangGraph ToolNode
         
         Args:
-            cost_calculator: Optional CostCalculator tool instance
-            currency_converter: Optional CurrencyConverter tool instance
+            tool_node: LangGraph ToolNode with travel tools
         """
-        self.cost_calculator = cost_calculator or CostCalculator()
-        self.currency_converter = currency_converter or CurrencyConverter()
+        self.tool_node = tool_node
         self.itinerary_history: List[Dict[str, Any]] = []
     
     def create_itinerary(self, trip_data: Dict[str, Any], 
@@ -85,7 +81,7 @@ class ItineraryAgent:
                 )
             
             # Calculate total cost using cost calculator tool
-            itinerary["total_cost"] = self.cost_calculator.calculate_total_trip_cost(
+            itinerary["total_cost"] = self._calculate_total_trip_cost(
                 itinerary["cost_breakdown"]
             )
             
@@ -425,9 +421,9 @@ class ItineraryAgent:
             daily_transport_costs.append(costs.get("transportation", 30))
         
         # Calculate totals using cost calculator tool
-        total_activities = self.cost_calculator.add_costs(daily_activity_costs)
-        total_meals = self.cost_calculator.add_costs(daily_meal_costs)
-        total_transport = self.cost_calculator.add_costs(daily_transport_costs)
+        total_activities = self._add_costs(daily_activity_costs)
+        total_meals = self._add_costs(daily_meal_costs)
+        total_transport = self._add_costs(daily_transport_costs)
         
         # Hotel costs
         hotel_cost = 0
@@ -453,7 +449,7 @@ class ItineraryAgent:
         """Convert cost breakdown to target currency using currency converter tool."""
         
         try:
-            converted_costs = self.currency_converter.convert_cost_breakdown(
+            converted_costs = self._convert_cost_breakdown(
                 cost_breakdown, from_currency, to_currency
             )
             logger.info(f"Converted costs from {from_currency} to {to_currency}")
@@ -579,3 +575,28 @@ class ItineraryAgent:
         """Clear itinerary creation history."""
         self.itinerary_history.clear()
         logger.info("Itinerary creation history cleared")
+    
+    def _add_costs(self, costs: List[float]) -> float:
+        """Use LangGraph tool to add costs."""
+        if self.tool_node:
+            from ..tools.langgraph_tools import add_costs
+            return add_costs.invoke({"costs": costs})
+        return sum(cost for cost in costs if cost is not None)
+    
+    def _calculate_total_trip_cost(self, costs_breakdown: Dict[str, float]) -> float:
+        """Use LangGraph tool to calculate total trip cost."""
+        if self.tool_node:
+            from ..tools.langgraph_tools import calculate_total_trip_cost
+            return calculate_total_trip_cost.invoke({"costs_breakdown": costs_breakdown})
+        return sum(cost for cost in costs_breakdown.values() if cost is not None)
+    
+    def _convert_cost_breakdown(self, cost_breakdown: Dict[str, float], from_currency: str, to_currency: str) -> Dict[str, float]:
+        """Use LangGraph tool to convert cost breakdown."""
+        if self.tool_node:
+            from ..tools.langgraph_tools import convert_currency
+            converted = {}
+            for category, amount in cost_breakdown.items():
+                result = convert_currency.invoke({"amount": amount, "from_currency": from_currency, "to_currency": to_currency})
+                converted[category] = result if isinstance(result, (int, float)) else amount
+            return converted
+        return cost_breakdown
