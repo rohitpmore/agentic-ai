@@ -11,7 +11,7 @@ import argparse
 from typing import Dict, Any
 import json
 import logging
-from travel_agent_system.core.workflow import TravelPlannerWorkflow
+from travel_agent_system.core.langgraph_workflow import LangGraphTravelWorkflow
 from travel_agent_system.utils.formatters import display_trip_summary
 from config import config
 
@@ -20,12 +20,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import modules with error handling
 try:
-    from travel_agent_system.core.workflow import TravelPlannerWorkflow
+    from travel_agent_system.core.langgraph_workflow import LangGraphTravelWorkflow
     from travel_agent_system.utils.formatters import display_trip_summary
 except ImportError as e:
     print(f"Import error: {e}")
     print("Some modules may not be available. Running in limited mode.")
-    TravelPlannerWorkflow = None
+    LangGraphTravelWorkflow = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -132,7 +132,7 @@ def print_result(result: Dict[str, Any]):
     print("=" * 60)
 
 
-def interactive_mode(workflow: TravelPlannerWorkflow):
+def interactive_mode(workflow: LangGraphTravelWorkflow):
     """
     Run the system in interactive mode.
     
@@ -169,7 +169,7 @@ def interactive_mode(workflow: TravelPlannerWorkflow):
             print(f"\n❌ Error: {str(e)}")
 
 
-def single_query_mode(workflow: TravelPlannerWorkflow, question: str):
+def single_query_mode(workflow: LangGraphTravelWorkflow, question: str):
     """
     Process a single travel query and exit.
     
@@ -182,7 +182,7 @@ def single_query_mode(workflow: TravelPlannerWorkflow, question: str):
     print_result(result)
 
 
-def test_mode(workflow: TravelPlannerWorkflow):
+def test_mode(workflow: LangGraphTravelWorkflow):
     """
     Run the system test suite.
     
@@ -292,11 +292,11 @@ def setup_mode():
     
     print("\n🔌 Testing system initialization...")
     try:
-        if TravelPlannerWorkflow is None:
+        if LangGraphTravelWorkflow is None:
             print("❌ Cannot test - import failed")
             return False
             
-        workflow = TravelPlannerWorkflow()
+        workflow = LangGraphTravelWorkflow()
         
         # Quick connection test
         test_result = workflow.query("Test connection to London")
@@ -366,30 +366,30 @@ Examples:
             setup_mode()
         elif args.test:
             # Initialize the workflow for testing
-            if TravelPlannerWorkflow is None:
+            if LangGraphTravelWorkflow is None:
                 print("❌ Cannot run tests - system import failed")
                 sys.exit(1)
             print("\n🚀 Initializing Travel Agent System...")
-            workflow = TravelPlannerWorkflow()
+            workflow = LangGraphTravelWorkflow()
             print("✅ System initialized successfully!")
             test_mode(workflow)
         elif args.query:
             # Initialize the workflow for single query
-            if TravelPlannerWorkflow is None:
+            if LangGraphTravelWorkflow is None:
                 print("❌ Cannot process query - system import failed")
                 sys.exit(1)
             print("\n🚀 Initializing Travel Agent System...")
-            workflow = TravelPlannerWorkflow()
+            workflow = LangGraphTravelWorkflow()
             print("✅ System initialized successfully!")
             single_query_mode(workflow, args.query)
         else:
             # Initialize the workflow for interactive mode
-            if TravelPlannerWorkflow is None:
+            if LangGraphTravelWorkflow is None:
                 print("❌ Cannot start interactive mode - system import failed")
                 print("💡 Run 'python main.py --setup' to diagnose issues")
                 sys.exit(1)
             print("\n🚀 Initializing Travel Agent System...")
-            workflow = TravelPlannerWorkflow()
+            workflow = LangGraphTravelWorkflow()
             print("✅ System initialized successfully!")
             interactive_mode(workflow)
             
