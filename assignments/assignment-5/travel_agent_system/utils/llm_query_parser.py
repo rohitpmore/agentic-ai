@@ -33,7 +33,7 @@ class LLMQueryParser:
         # Configure Gemini if available
         if GEMINI_AVAILABLE and config.gemini_api_key and config.gemini_api_key != "fallback_gemini_key":
             genai.configure(api_key=config.gemini_api_key)
-            self.model = genai.GenerativeModel('gemini-pro')
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
             self.llm_available = True
         else:
             if not GEMINI_AVAILABLE:

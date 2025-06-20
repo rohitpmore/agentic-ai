@@ -5,7 +5,7 @@ A sophisticated multi-agent travel planning system that orchestrates specialized
 ## 🌟 Features
 
 ### Core Capabilities
-- **Multi-Agent Architecture**: Parallel execution of specialized agents (Weather, Attractions, Hotels, Itinerary)
+- **LangGraph Multi-Agent Architecture**: StateGraph workflow orchestration with specialized agent nodes
 - **Natural Language Processing**: Parse travel requests like "Plan a 5-day trip to Tokyo with $2000 budget"
 - **Real-time Data Integration**: Weather forecasts, attraction discovery, hotel pricing, currency conversion
 - **Cost Optimization**: Budget-aware planning with detailed expense breakdowns
@@ -22,6 +22,12 @@ A sophisticated multi-agent travel planning system that orchestrates specialized
 
 ## 🏗️ System Architecture
 
+### LangGraph Workflow Diagram
+
+![Travel Workflow Diagram](travel_workflow_diagram.png)
+
+### Component Overview
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Main CLI Interface                      │
@@ -29,23 +35,23 @@ A sophisticated multi-agent travel planning system that orchestrates specialized
 └─────────────────────┬───────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
-│                Travel Workflow                              │
-│             (TravelPlannerWorkflow)                         │
-│  • Query parsing • Parallel orchestration • Response       │
+│              LangGraph StateGraph Workflow                  │
+│             (LangGraphTravelWorkflow)                       │
+│   • Input validation • Parallel execution • State mgmt     │
 └─────────────────────┬───────────────────────────────────────┘
                       │
         ┌─────────────┼─────────────┬─────────────┐
         │             │             │             │
 ┌───────▼──────┐ ┌───▼────┐ ┌──────▼──────┐ ┌───▼────────┐
-│ WeatherAgent │ │AttrAgent│ │ HotelAgent  │ │ItinAgent   │
+│ weather_node │ │attr_node│ │ hotels_node │ │ itin_node  │
 │• Current     │ │• Places │ │• Pricing    │ │• Day plans │
 │• Forecast    │ │• Reviews│ │• Categories │ │• Costs     │
-│• Recommend   │ │• Budget │ │• Budget fit │ │• Summary   │
+│• Recommend   │ │• Budget │ │• Budget fit │ │• Tools     │
 └──────────────┘ └─────────┘ └─────────────┘ └────────────┘
         │             │             │             │
 ┌───────▼──────┐ ┌───▼────┐ ┌──────▼──────┐ ┌───▼────────┐
-│OpenWeatherAPI│ │Foursquare│ │(Fallback   │ │Cost Calc   │
-│ExchangeRateAPI│ │   API   │ │ Hotels)    │ │Currency    │
+│OpenWeatherAPI│ │Foursquare│ │(Fallback   │ │LangGraph   │
+│ExchangeRateAPI│ │   API   │ │ Hotels)    │ │ Tools      │
 └──────────────┘ └─────────┘ └─────────────┘ └────────────┘
 ```
 
@@ -203,12 +209,14 @@ assignment-5/
 │   │   └── itinerary_agent.py       # Trip planning & cost optimization
 │   ├── core/                        # Core system components
 │   │   ├── __init__.py
-│   │   ├── workflow.py              # Main orchestration logic
-│   │   └── state.py                 # Shared state management
+│   │   ├── langgraph_workflow.py    # LangGraph StateGraph orchestration
+│   │   ├── graph_state.py           # LangGraph state management
+│   │   └── nodes.py                 # Workflow node functions
 │   ├── tools/                       # Utility tools
 │   │   ├── __init__.py
 │   │   ├── cost_calculator.py       # Budget calculations
-│   │   └── currency_converter.py    # Multi-currency support
+│   │   ├── currency_converter.py    # Multi-currency support
+│   │   └── langgraph_tools.py       # LangGraph integrated tools
 │   └── utils/                       # Supporting utilities
 │       ├── __init__.py
 │       ├── api_clients.py           # External API integrations

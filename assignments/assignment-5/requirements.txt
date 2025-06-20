@@ -5,9 +5,12 @@ requests
 
 # LangChain Ecosystem
 langchain
-langchain-core
-langchain-community
-langchain-google-genai
+langchain_core
+langchain_community
+langchain_google_genai
+
+# Google Generative AI
+google_generativeai
 
 # Workflow Orchestration
 langgraph

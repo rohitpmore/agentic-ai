@@ -3,6 +3,7 @@ LangGraph Node Functions - Individual node implementations for travel planning w
 """
 
 import logging
+from typing import Dict, Any
 
 from .graph_state import (
     TravelPlanState,
@@ -411,27 +412,169 @@ def itinerary_node(state: TravelPlanState) -> TravelPlanState:
         return mark_agent_error(state, "itinerary", str(e))
 
 
+def _create_trip_summary(itinerary_data: Dict[str, Any], weather_data: Dict[str, Any], 
+                        attractions_data: Dict[str, Any], hotels_data: Dict[str, Any], 
+                        destination: str) -> Dict[str, Any]:
+    """
+    Create formatted trip summary structure expected by print_result function.
+    
+    Args:
+        itinerary_data: Data from ItineraryAgent
+        weather_data: Data from WeatherAgent  
+        attractions_data: Data from AttractionAgent
+        hotels_data: Data from HotelAgent
+        destination: Trip destination
+        
+    Returns:
+        Dict[str, Any]: Formatted trip summary
+    """
+    trip_summary = {}
+    
+    # Create overview section
+    if itinerary_data:
+        total_cost = itinerary_data.get("total_cost", 0)
+        total_days = itinerary_data.get("total_days", 0)
+        daily_average = total_cost / max(total_days, 1) if total_days > 0 else 0
+        
+        trip_summary["overview"] = {
+            "total_days": total_days,
+            "total_cost": total_cost,
+            "daily_average": daily_average,
+            "currency": "USD"  # Default currency
+        }
+        
+        # Create cost breakdown section
+        cost_breakdown = itinerary_data.get("cost_breakdown", {})
+        if cost_breakdown:
+            total = sum(cost_breakdown.values()) if cost_breakdown.values() else 1
+            categories = {}
+            
+            for category, amount in cost_breakdown.items():
+                percentage = (amount / total * 100) if total > 0 else 0
+                categories[category] = {
+                    "formatted": f"${amount:.2f}",
+                    "percentage": f"{percentage:.1f}"
+                }
+            
+            trip_summary["cost_breakdown"] = {"categories": categories}
+    
+    # Create highlights from attractions, hotels, and itinerary
+    highlights = []
+    
+    # Add top attractions
+    if attractions_data and attractions_data.get("attractions"):
+        top_attractions = attractions_data["attractions"][:2]  # Top 2 attractions
+        for attraction in top_attractions:
+            name = attraction.get("name", "Attraction")
+            highlights.append(f"Visit {name}")
+    
+    # Add hotel highlights
+    if hotels_data and hotels_data.get("hotels"):
+        hotel_count = len(hotels_data["hotels"])
+        if hotel_count > 0:
+            highlights.append(f"{hotel_count} carefully selected accommodation options")
+            # Add top hotel if available
+            top_hotel = hotels_data["hotels"][0]
+            hotel_name = top_hotel.get("name", "Featured accommodation")
+            highlights.append(f"Stay at {hotel_name}")
+    
+    # Add weather highlights  
+    if weather_data and weather_data.get("forecast"):
+        forecast = weather_data["forecast"]
+        if forecast:
+            first_day = forecast[0]
+            temp = first_day.get("temperature", {}).get("avg")
+            weather_desc = first_day.get("description", "")
+            if temp and weather_desc:
+                highlights.append(f"Weather: {weather_desc}, {temp}°C")
+    
+    # Add cost highlight
+    if itinerary_data and itinerary_data.get("total_cost"):
+        highlights.append(f"Total budget: ${itinerary_data['total_cost']:.2f}")
+    
+    trip_summary["highlights"] = highlights
+    
+    # Create executive summary
+    executive_summary = f"A {itinerary_data.get('total_days', 3)}-day trip to {destination}"
+    
+    if itinerary_data and itinerary_data.get("total_cost"):
+        executive_summary += f" with a total budget of ${itinerary_data['total_cost']:.2f}"
+    
+    if attractions_data and attractions_data.get("attractions"):
+        attraction_count = len(attractions_data["attractions"])
+        executive_summary += f", featuring {attraction_count} curated attractions"
+    
+    if weather_data and weather_data.get("forecast"):
+        executive_summary += " with weather-optimized daily planning"
+    
+    executive_summary += ". Includes accommodation, activities, meals, and transportation."
+    
+    trip_summary["executive_summary"] = executive_summary
+    
+    return trip_summary
+
+
 def summary_generation_node(state: TravelPlanState) -> TravelPlanState:
     """
-    Generate comprehensive trip summary.
+    Generate comprehensive trip summary using LLM-powered SummaryAgent.
     
     Args:
         state: Current workflow state
         
     Returns:
-        TravelPlanState: Updated state marked as complete
+        TravelPlanState: Updated state with LLM-generated trip summary
     """
-    logger.info("Starting summary generation")
+    logger.info("Starting LLM-powered summary generation")
     
     try:
+        # Get data from all agents (including hotels_data)
+        trip_data = {
+            "destination": state.get("destination", "Unknown"),
+            "itinerary_data": state.get("itinerary_data", {}),
+            "weather_data": state.get("weather_data", {}),
+            "attractions_data": state.get("attractions_data", {}),
+            "hotels_data": state.get("hotels_data", {}),  # Now properly included
+            "budget": state.get("budget"),
+            "travel_dates": state.get("travel_dates"),
+            "preferences": state.get("preferences", {})
+        }
+        
+        # Use SummaryAgent for LLM-powered summary generation
+        from ..agents.summary_agent import SummaryAgent
+        from ..tools.langgraph_tools import TRAVEL_TOOLS
+        from langgraph.prebuilt import ToolNode
+        
+        # Create tool node for LangGraph tools integration
+        tool_node = ToolNode(TRAVEL_TOOLS)
+        summary_agent = SummaryAgent(tool_node=tool_node)
+        
+        # Generate comprehensive summary using LLM + LangGraph tools
+        trip_summary = summary_agent.generate_trip_summary(trip_data)
+        
+        # Check for errors in summary generation
+        if "error" in trip_summary:
+            error_msg = trip_summary["error"]
+            logger.error(f"LLM summary generation failed: {error_msg}")
+            # Fall back to manual summary if LLM fails
+            trip_summary = _create_trip_summary(
+                trip_data["itinerary_data"], 
+                trip_data["weather_data"], 
+                trip_data["attractions_data"], 
+                trip_data["hotels_data"], 
+                trip_data["destination"]
+            )
+        
         # Mark workflow as complete
         new_state = mark_complete(state)
         
+        # Add the LLM-generated trip summary to state
+        new_state["trip_summary"] = trip_summary
+        
         # Add summary generation stage
         current_stages = new_state.get("processing_stages", [])
-        new_state["processing_stages"] = current_stages + ["summary_generation_completed"]
+        new_state["processing_stages"] = current_stages + ["llm_summary_generation_completed"]
         
-        logger.info("Summary generation completed")
+        logger.info("LLM-powered summary generation completed")
         return new_state
         
     except Exception as e:

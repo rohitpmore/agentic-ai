@@ -35,6 +35,7 @@ class TravelPlanState(TypedDict):
     attractions_data: NotRequired[Optional[Dict[str, Any]]]
     hotels_data: NotRequired[Optional[Dict[str, Any]]]
     itinerary_data: NotRequired[Optional[Dict[str, Any]]]
+    trip_summary: NotRequired[Optional[Dict[str, Any]]]  # Formatted summary for display
     
     # Processing metadata
     errors: NotRequired[List[str]]
@@ -73,6 +74,7 @@ def create_initial_state(**kwargs) -> TravelPlanState:
         "attractions_data": None,
         "hotels_data": None,
         "itinerary_data": None,
+        "trip_summary": None,
         
         # Processing metadata
         "errors": [],

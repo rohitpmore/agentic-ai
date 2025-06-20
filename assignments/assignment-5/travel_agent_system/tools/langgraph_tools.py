@@ -69,6 +69,99 @@ def format_currency_amount(amount: float, currency: str) -> str:
     return _currency_converter.format_currency_amount(amount, currency)
 
 
+@tool
+def extract_trip_highlights(trip_data: Dict[str, Any]) -> List[str]:
+    """Extract key highlights from trip data for summary generation."""
+    highlights = []
+    
+    # Extract attractions highlights
+    attractions_data = trip_data.get("attractions_data", {})
+    if attractions_data and attractions_data.get("attractions"):
+        for attraction in attractions_data["attractions"][:3]:
+            name = attraction.get("name", "Attraction")
+            highlights.append(f"Visit {name}")
+    
+    # Extract hotel highlights
+    hotels_data = trip_data.get("hotels_data", {})
+    if hotels_data and hotels_data.get("hotels"):
+        hotel_count = len(hotels_data["hotels"])
+        highlights.append(f"{hotel_count} accommodation options available")
+        
+        # Add featured hotel
+        if hotels_data["hotels"]:
+            top_hotel = hotels_data["hotels"][0]
+            hotel_name = top_hotel.get("name", "Featured accommodation")
+            highlights.append(f"Stay at {hotel_name}")
+    
+    # Extract weather highlights
+    weather_data = trip_data.get("weather_data", {})
+    if weather_data and weather_data.get("forecast"):
+        forecast = weather_data["forecast"]
+        if forecast:
+            first_day = forecast[0]
+            temp = first_day.get("temperature", {}).get("avg")
+            weather_desc = first_day.get("description", "")
+            if temp and weather_desc:
+                highlights.append(f"Weather: {weather_desc}, {temp}°C")
+    
+    # Extract budget highlights
+    itinerary_data = trip_data.get("itinerary_data", {})
+    if itinerary_data and itinerary_data.get("total_cost"):
+        highlights.append(f"Total budget: ${itinerary_data['total_cost']:.2f}")
+    
+    return highlights
+
+
+@tool
+def calculate_trip_statistics(trip_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate comprehensive trip statistics for summary generation."""
+    stats = {}
+    
+    # Basic trip info
+    stats["destination"] = trip_data.get("destination", "Unknown")
+    
+    # Itinerary statistics
+    itinerary_data = trip_data.get("itinerary_data", {})
+    if itinerary_data:
+        stats["total_days"] = itinerary_data.get("total_days", 0)
+        stats["total_cost"] = itinerary_data.get("total_cost", 0)
+        if stats["total_days"] > 0:
+            stats["daily_average"] = stats["total_cost"] / stats["total_days"]
+        else:
+            stats["daily_average"] = 0
+        stats["currency"] = itinerary_data.get("currency", "USD")
+    
+    # Agent data counts
+    attractions_data = trip_data.get("attractions_data", {})
+    hotels_data = trip_data.get("hotels_data", {})
+    weather_data = trip_data.get("weather_data", {})
+    
+    stats["attraction_count"] = len(attractions_data.get("attractions", [])) if attractions_data else 0
+    stats["hotel_count"] = len(hotels_data.get("hotels", [])) if hotels_data else 0
+    stats["weather_available"] = bool(weather_data and weather_data.get("forecast"))
+    
+    return stats
+
+
+@tool
+def format_cost_breakdown_display(cost_breakdown: Dict[str, float]) -> Dict[str, Dict[str, str]]:
+    """Format cost breakdown for display with percentages and formatted amounts."""
+    if not cost_breakdown:
+        return {"categories": {}}
+    
+    total = sum(cost_breakdown.values()) if cost_breakdown.values() else 1
+    categories = {}
+    
+    for category, amount in cost_breakdown.items():
+        percentage = (amount / total * 100) if total > 0 else 0
+        categories[category] = {
+            "formatted": f"${amount:.2f}",
+            "percentage": f"{percentage:.1f}"
+        }
+    
+    return {"categories": categories}
+
+
 # List of all available tools
 TRAVEL_TOOLS = [
     add_costs,
@@ -79,5 +172,8 @@ TRAVEL_TOOLS = [
     calculate_budget_remaining,
     convert_currency,
     get_exchange_rate,
-    format_currency_amount
+    format_currency_amount,
+    extract_trip_highlights,
+    calculate_trip_statistics,
+    format_cost_breakdown_display
 ]

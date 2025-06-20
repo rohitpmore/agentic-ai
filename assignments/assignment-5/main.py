@@ -351,6 +351,13 @@ Examples:
         help="Skip the banner display"
     )
     
+    parser.add_argument(
+        "--save-graph",
+        type=str,
+        metavar="FILENAME",
+        help="Save workflow graph visualization as PNG"
+    )
+    
     args = parser.parse_args()
     
     # Always check for API keys first
@@ -373,6 +380,15 @@ Examples:
             workflow = LangGraphTravelWorkflow()
             print("✅ System initialized successfully!")
             test_mode(workflow)
+        elif args.save_graph:
+            # Save workflow graph visualization
+            if LangGraphTravelWorkflow is None:
+                print("❌ Cannot generate graph - system import failed")
+                sys.exit(1)
+            print(f"\n📊 Generating workflow graph: {args.save_graph}")
+            workflow = LangGraphTravelWorkflow()
+            workflow.save_graph_image(args.save_graph)
+            print(f"✅ Graph saved as {args.save_graph}")
         elif args.query:
             # Initialize the workflow for single query
             if LangGraphTravelWorkflow is None:

@@ -148,6 +148,8 @@ class TravelQuery(BaseModel):
         """
         # Handle preferences separately
         preferences_data = data.pop("preferences", {})
+        # Remove None values to let defaults take effect
+        preferences_data = {k: v for k, v in preferences_data.items() if v is not None}
         preferences = TravelPreferences(**preferences_data)
         
         # Handle dates
