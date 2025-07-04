@@ -10,6 +10,7 @@ class ResearchState(MessagesState):
     financial_findings: Dict[str, Any]
     research_status: Literal["pending", "in_progress", "completed", "failed"]
     research_metadata: Dict[str, Any]
+    current_researcher: str
     
 class ReportingState(MessagesState):
     """State for reporting team operations"""
@@ -18,6 +19,7 @@ class ReportingState(MessagesState):
     summary: str
     report_status: Literal["pending", "in_progress", "completed", "failed"]
     report_metadata: Dict[str, Any]
+    current_reporter: str
     
 class SupervisorState(MessagesState):
     """Main supervisor state combining all team states"""
@@ -28,6 +30,7 @@ class SupervisorState(MessagesState):
     final_output: Dict[str, Any]
     error_state: Optional[Dict[str, Any]]
     system_metrics: Dict[str, Any]
+    retry_delay: Optional[int]
     
 class AgentMetrics(TypedDict):
     """Metrics for individual agents"""

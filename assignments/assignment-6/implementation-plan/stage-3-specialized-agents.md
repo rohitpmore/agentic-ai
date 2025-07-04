@@ -1061,7 +1061,59 @@ class DocumentCreator(BaseAgent):
         }
     
     def _generate_document_title(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
-        """Generate appropriate document title"""
+        """Generate compelling document title using LLM"""
+        
+        # Prepare context for LLM title generation
+        context = self._prepare_title_context(medical_findings, financial_findings)
+        
+        prompt = f"""
+        Create a compelling, professional document title based on this research:
+        
+        {context}
+        
+        Requirements:
+        - Executive-level audience
+        - Professional and engaging
+        - Reflects both domains if present
+        - Maximum 15 words
+        - Captures key insights
+        
+        Return only the title, no explanation.
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            title = response.content.strip().strip('"')
+            return title if title else self._generate_fallback_title(medical_findings, financial_findings)
+        except Exception as e:
+            self.logger.error(f"LLM title generation failed: {e}")
+            return self._generate_fallback_title(medical_findings, financial_findings)
+    
+    def _prepare_title_context(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Prepare context for title generation"""
+        
+        context_parts = []
+        
+        # Medical context
+        medical_topic = medical_findings.get("research_topic", "")
+        medical_key_findings = medical_findings.get("key_findings", [])[:3]
+        if medical_topic:
+            context_parts.append(f"Medical Topic: {medical_topic}")
+        if medical_key_findings:
+            context_parts.append(f"Medical Insights: {'; '.join(medical_key_findings)}")
+        
+        # Financial context
+        financial_topic = financial_findings.get("research_topic", "")
+        financial_key_findings = financial_findings.get("key_findings", [])[:3]
+        if financial_topic:
+            context_parts.append(f"Financial Topic: {financial_topic}")
+        if financial_key_findings:
+            context_parts.append(f"Financial Insights: {'; '.join(financial_key_findings)}")
+        
+        return "\n".join(context_parts)
+    
+    def _generate_fallback_title(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Generate fallback title when LLM fails"""
         
         medical_topic = medical_findings.get("research_topic", "")
         financial_topic = financial_findings.get("research_topic", "")
@@ -1076,7 +1128,97 @@ class DocumentCreator(BaseAgent):
             return "Multi-Domain Research Report"
     
     def _generate_executive_summary(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
-        """Generate executive summary"""
+        """Generate comprehensive executive summary using LLM"""
+        
+        # Prepare research context for LLM
+        context = self._prepare_summary_context(medical_findings, financial_findings)
+        
+        prompt = f"""
+        Create a comprehensive executive summary for a professional research report:
+        
+        {context}
+        
+        Requirements:
+        - 3-4 paragraphs maximum
+        - Executive-level audience
+        - Highlight key findings and implications
+        - Identify cross-domain insights
+        - Professional, engaging tone
+        - Include quality indicators
+        - Focus on actionable insights
+        
+        Structure:
+        Paragraph 1: Research scope and methodology
+        Paragraph 2: Key medical findings and implications
+        Paragraph 3: Key financial findings and implications
+        Paragraph 4: Cross-domain insights and recommendations
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            return response.content.strip()
+        except Exception as e:
+            self.logger.error(f"LLM executive summary generation failed: {e}")
+            return self._generate_fallback_summary(medical_findings, financial_findings)
+    
+    def _prepare_summary_context(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Prepare comprehensive context for executive summary"""
+        
+        context_parts = []
+        
+        # Research scope
+        total_papers = len(medical_findings.get("research_papers", [])) + len(financial_findings.get("research_papers", []))
+        context_parts.append(f"RESEARCH SCOPE: Analysis of {total_papers} academic papers")
+        
+        # Medical findings
+        if medical_findings.get("key_findings"):
+            context_parts.append("MEDICAL FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in medical_findings["key_findings"][:5]])
+            
+            # Clinical insights
+            clinical_insights = medical_findings.get("clinical_insights", {})
+            if clinical_insights.get("trials"):
+                context_parts.append(f"- Clinical trials: {len(clinical_insights['trials'])} studies analyzed")
+            
+            # Drug interactions
+            drug_interactions = medical_findings.get("drug_interactions", {})
+            if drug_interactions.get("interactions"):
+                context_parts.append(f"- Drug interactions: {len(drug_interactions['interactions'])} identified")
+            
+            context_parts.append("")
+        
+        # Financial findings
+        if financial_findings.get("key_findings"):
+            context_parts.append("FINANCIAL FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in financial_findings["key_findings"][:5]])
+            
+            # Market analysis
+            market_analysis = financial_findings.get("market_analysis", {})
+            if market_analysis.get("opportunities"):
+                context_parts.append(f"- Market opportunities: {len(market_analysis['opportunities'])} identified")
+            
+            # Risk assessment
+            risk_assessment = financial_findings.get("risk_assessment", {})
+            if risk_assessment.get("risks"):
+                context_parts.append(f"- Risk factors: {len(risk_assessment['risks'])} assessed")
+            
+            context_parts.append("")
+        
+        # Quality indicators
+        medical_quality = medical_findings.get("quality_indicators", {})
+        financial_quality = financial_findings.get("quality_indicators", {})
+        
+        if medical_quality or financial_quality:
+            context_parts.append("QUALITY INDICATORS:")
+            if medical_quality.get("avg_relevance"):
+                context_parts.append(f"- Medical research quality: {medical_quality['avg_relevance']:.2f}/1.0")
+            if financial_quality.get("avg_relevance"):
+                context_parts.append(f"- Financial research quality: {financial_quality['avg_relevance']:.2f}/1.0")
+        
+        return "\n".join(context_parts)
+    
+    def _generate_fallback_summary(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Generate fallback summary when LLM fails"""
         
         summary_parts = []
         
@@ -1098,42 +1240,411 @@ class DocumentCreator(BaseAgent):
         return ". ".join(summary_parts) + "."
     
     def _format_medical_section(self, medical_findings: Dict[str, Any]) -> Dict[str, Any]:
-        """Format medical research section"""
+        """Format medical research section with LLM-enhanced content"""
+        
+        # Generate enhanced content using LLM
+        enhanced_content = self._enhance_medical_content(medical_findings)
         
         return {
+            "narrative_summary": enhanced_content.get("narrative_summary", ""),
             "key_findings": medical_findings.get("key_findings", []),
             "clinical_insights": medical_findings.get("clinical_insights", {}),
             "drug_interactions": medical_findings.get("drug_interactions", {}),
             "quality_score": medical_findings.get("quality_indicators", {}).get("avg_relevance", 0),
             "source_count": len(medical_findings.get("research_papers", [])),
-            "specializations": medical_findings.get("medical_specializations", [])
+            "specializations": medical_findings.get("medical_specializations", []),
+            "research_implications": enhanced_content.get("research_implications", []),
+            "clinical_significance": enhanced_content.get("clinical_significance", "")
+        }
+    
+    def _enhance_medical_content(self, medical_findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhance medical content using LLM"""
+        
+        # Prepare medical context
+        context = self._prepare_medical_context(medical_findings)
+        
+        prompt = f"""
+        Create enhanced content for the medical research section of a professional report:
+        
+        {context}
+        
+        Generate the following components:
+        
+        1. NARRATIVE SUMMARY - A compelling 2-3 sentence summary of medical findings
+        2. RESEARCH IMPLICATIONS - 3-4 bullet points on research implications
+        3. CLINICAL SIGNIFICANCE - 1-2 sentences on clinical significance
+        
+        Format your response as:
+        
+        NARRATIVE SUMMARY:
+        [2-3 sentences]
+        
+        RESEARCH IMPLICATIONS:
+        - [Implication 1]
+        - [Implication 2]
+        - [Implication 3]
+        
+        CLINICAL SIGNIFICANCE:
+        [1-2 sentences]
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            return self._parse_medical_enhancement(response.content)
+        except Exception as e:
+            self.logger.error(f"Medical content enhancement failed: {e}")
+            return self._generate_fallback_medical_content(medical_findings)
+    
+    def _prepare_medical_context(self, medical_findings: Dict[str, Any]) -> str:
+        """Prepare medical context for enhancement"""
+        
+        context_parts = []
+        
+        # Research topic
+        topic = medical_findings.get("research_topic", "")
+        if topic:
+            context_parts.append(f"RESEARCH TOPIC: {topic}")
+        
+        # Key findings
+        key_findings = medical_findings.get("key_findings", [])
+        if key_findings:
+            context_parts.append("KEY FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in key_findings[:5]])
+        
+        # Clinical insights
+        clinical_insights = medical_findings.get("clinical_insights", {})
+        if clinical_insights.get("trials"):
+            context_parts.append(f"CLINICAL TRIALS: {len(clinical_insights['trials'])} studies")
+        
+        # Drug interactions
+        drug_interactions = medical_findings.get("drug_interactions", {})
+        if drug_interactions.get("interactions"):
+            context_parts.append(f"DRUG INTERACTIONS: {len(drug_interactions['interactions'])} identified")
+        
+        # Quality indicators
+        quality = medical_findings.get("quality_indicators", {})
+        if quality.get("avg_relevance"):
+            context_parts.append(f"RESEARCH QUALITY: {quality['avg_relevance']:.2f}/1.0")
+        
+        return "\n".join(context_parts)
+    
+    def _parse_medical_enhancement(self, enhancement_text: str) -> Dict[str, Any]:
+        """Parse medical enhancement response"""
+        
+        result = {
+            "narrative_summary": "",
+            "research_implications": [],
+            "clinical_significance": ""
+        }
+        
+        current_section = None
+        
+        for line in enhancement_text.split('\n'):
+            line = line.strip()
+            
+            if line.startswith('NARRATIVE SUMMARY:'):
+                current_section = "narrative_summary"
+            elif line.startswith('RESEARCH IMPLICATIONS:'):
+                current_section = "research_implications"
+            elif line.startswith('CLINICAL SIGNIFICANCE:'):
+                current_section = "clinical_significance"
+            elif line.startswith('- ') and current_section == "research_implications":
+                result["research_implications"].append(line[2:])
+            elif line and current_section in ["narrative_summary", "clinical_significance"]:
+                if result[current_section]:
+                    result[current_section] += " " + line
+                else:
+                    result[current_section] = line
+        
+        return result
+    
+    def _generate_fallback_medical_content(self, medical_findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate fallback medical content"""
+        
+        key_findings = medical_findings.get("key_findings", [])
+        clinical_insights = medical_findings.get("clinical_insights", {})
+        
+        return {
+            "narrative_summary": f"Medical research analysis identified {len(key_findings)} key findings with clinical implications.",
+            "research_implications": [
+                "Clinical trial data supports further investigation",
+                "Drug interaction profiles require monitoring",
+                "Safety considerations identified for patient populations"
+            ][:len(key_findings)],
+            "clinical_significance": "Research findings provide important insights for clinical practice and patient care."
         }
     
     def _format_financial_section(self, financial_findings: Dict[str, Any]) -> Dict[str, Any]:
-        """Format financial research section"""
+        """Format financial research section with LLM-enhanced content"""
+        
+        # Generate enhanced content using LLM
+        enhanced_content = self._enhance_financial_content(financial_findings)
         
         return {
+            "narrative_summary": enhanced_content.get("narrative_summary", ""),
             "key_findings": financial_findings.get("key_findings", []),
             "market_analysis": financial_findings.get("market_analysis", {}),
             "risk_assessment": financial_findings.get("risk_assessment", {}),
             "economic_indicators": financial_findings.get("economic_indicators", {}),
             "quality_score": financial_findings.get("quality_indicators", {}).get("avg_relevance", 0),
             "source_count": len(financial_findings.get("research_papers", [])),
-            "specializations": financial_findings.get("financial_specializations", [])
+            "specializations": financial_findings.get("financial_specializations", []),
+            "investment_insights": enhanced_content.get("investment_insights", []),
+            "market_significance": enhanced_content.get("market_significance", "")
+        }
+    
+    def _enhance_financial_content(self, financial_findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhance financial content using LLM"""
+        
+        # Prepare financial context
+        context = self._prepare_financial_context(financial_findings)
+        
+        prompt = f"""
+        Create enhanced content for the financial research section of a professional report:
+        
+        {context}
+        
+        Generate the following components:
+        
+        1. NARRATIVE SUMMARY - A compelling 2-3 sentence summary of financial findings
+        2. INVESTMENT INSIGHTS - 3-4 bullet points on investment insights
+        3. MARKET SIGNIFICANCE - 1-2 sentences on market significance
+        
+        Format your response as:
+        
+        NARRATIVE SUMMARY:
+        [2-3 sentences]
+        
+        INVESTMENT INSIGHTS:
+        - [Insight 1]
+        - [Insight 2]
+        - [Insight 3]
+        
+        MARKET SIGNIFICANCE:
+        [1-2 sentences]
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            return self._parse_financial_enhancement(response.content)
+        except Exception as e:
+            self.logger.error(f"Financial content enhancement failed: {e}")
+            return self._generate_fallback_financial_content(financial_findings)
+    
+    def _prepare_financial_context(self, financial_findings: Dict[str, Any]) -> str:
+        """Prepare financial context for enhancement"""
+        
+        context_parts = []
+        
+        # Research topic
+        topic = financial_findings.get("research_topic", "")
+        if topic:
+            context_parts.append(f"RESEARCH TOPIC: {topic}")
+        
+        # Key findings
+        key_findings = financial_findings.get("key_findings", [])
+        if key_findings:
+            context_parts.append("KEY FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in key_findings[:5]])
+        
+        # Market analysis
+        market_analysis = financial_findings.get("market_analysis", {})
+        if market_analysis.get("opportunities"):
+            context_parts.append(f"MARKET OPPORTUNITIES: {len(market_analysis['opportunities'])} identified")
+        
+        # Risk assessment
+        risk_assessment = financial_findings.get("risk_assessment", {})
+        if risk_assessment.get("risks"):
+            context_parts.append(f"RISK FACTORS: {len(risk_assessment['risks'])} assessed")
+        
+        # Quality indicators
+        quality = financial_findings.get("quality_indicators", {})
+        if quality.get("avg_relevance"):
+            context_parts.append(f"RESEARCH QUALITY: {quality['avg_relevance']:.2f}/1.0")
+        
+        return "\n".join(context_parts)
+    
+    def _parse_financial_enhancement(self, enhancement_text: str) -> Dict[str, Any]:
+        """Parse financial enhancement response"""
+        
+        result = {
+            "narrative_summary": "",
+            "investment_insights": [],
+            "market_significance": ""
+        }
+        
+        current_section = None
+        
+        for line in enhancement_text.split('\n'):
+            line = line.strip()
+            
+            if line.startswith('NARRATIVE SUMMARY:'):
+                current_section = "narrative_summary"
+            elif line.startswith('INVESTMENT INSIGHTS:'):
+                current_section = "investment_insights"
+            elif line.startswith('MARKET SIGNIFICANCE:'):
+                current_section = "market_significance"
+            elif line.startswith('- ') and current_section == "investment_insights":
+                result["investment_insights"].append(line[2:])
+            elif line and current_section in ["narrative_summary", "market_significance"]:
+                if result[current_section]:
+                    result[current_section] += " " + line
+                else:
+                    result[current_section] = line
+        
+        return result
+    
+    def _generate_fallback_financial_content(self, financial_findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate fallback financial content"""
+        
+        key_findings = financial_findings.get("key_findings", [])
+        market_analysis = financial_findings.get("market_analysis", {})
+        
+        return {
+            "narrative_summary": f"Financial research analysis identified {len(key_findings)} key insights with market implications.",
+            "investment_insights": [
+                "Market opportunities present investment potential",
+                "Risk assessment highlights key considerations",
+                "Economic indicators support strategic planning"
+            ][:len(key_findings)],
+            "market_significance": "Research findings provide valuable insights for investment strategy and market positioning."
         }
     
     def _generate_cross_domain_analysis(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate cross-domain analysis"""
+        """Generate comprehensive cross-domain analysis using LLM"""
+        
+        # Prepare context for cross-domain analysis
+        context = self._prepare_cross_domain_context(medical_findings, financial_findings)
+        
+        prompt = f"""
+        Perform comprehensive cross-domain analysis between medical and financial research findings:
+        
+        {context}
+        
+        Analyze the following aspects:
+        
+        1. SYNERGIES - Identify meaningful connections and synergies between medical and financial findings
+        2. CONFLICTS - Identify potential conflicts or contradictions between domains
+        3. INVESTMENT IMPLICATIONS - Analyze how medical findings impact investment decisions
+        4. REGULATORY CONSIDERATIONS - Identify overlapping regulatory requirements
+        
+        Format your response as:
+        
+        SYNERGIES:
+        - [Synergy 1]
+        - [Synergy 2]
+        
+        CONFLICTS:
+        - [Conflict 1]
+        - [Conflict 2]
+        
+        INVESTMENT IMPLICATIONS:
+        - [Implication 1]
+        - [Implication 2]
+        
+        REGULATORY CONSIDERATIONS:
+        - [Consideration 1]
+        - [Consideration 2]
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            return self._parse_cross_domain_analysis(response.content)
+        except Exception as e:
+            self.logger.error(f"LLM cross-domain analysis failed: {e}")
+            return self._generate_fallback_cross_domain_analysis(medical_findings, financial_findings)
+    
+    def _prepare_cross_domain_context(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Prepare context for cross-domain analysis"""
+        
+        context_parts = []
+        
+        # Medical research context
+        if medical_findings.get("key_findings"):
+            context_parts.append("MEDICAL RESEARCH FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in medical_findings["key_findings"][:5]])
+            
+            # Clinical insights
+            clinical_insights = medical_findings.get("clinical_insights", {})
+            if clinical_insights.get("trials"):
+                context_parts.append(f"- Clinical trials: {len(clinical_insights['trials'])} studies")
+            
+            # Drug interactions
+            drug_interactions = medical_findings.get("drug_interactions", {})
+            if drug_interactions.get("safety_considerations"):
+                context_parts.append(f"- Safety considerations: {len(drug_interactions['safety_considerations'])}")
+            
+            context_parts.append("")
+        
+        # Financial research context
+        if financial_findings.get("key_findings"):
+            context_parts.append("FINANCIAL RESEARCH FINDINGS:")
+            context_parts.extend([f"- {finding}" for finding in financial_findings["key_findings"][:5]])
+            
+            # Market analysis
+            market_analysis = financial_findings.get("market_analysis", {})
+            if market_analysis.get("opportunities"):
+                context_parts.append(f"- Market opportunities: {len(market_analysis['opportunities'])}")
+            
+            # Risk assessment
+            risk_assessment = financial_findings.get("risk_assessment", {})
+            if risk_assessment.get("risks"):
+                context_parts.append(f"- Risk factors: {len(risk_assessment['risks'])}")
+            
+            context_parts.append("")
+        
+        # Research topics
+        medical_topic = medical_findings.get("research_topic", "")
+        financial_topic = financial_findings.get("research_topic", "")
+        if medical_topic or financial_topic:
+            context_parts.append("RESEARCH TOPICS:")
+            if medical_topic:
+                context_parts.append(f"- Medical: {medical_topic}")
+            if financial_topic:
+                context_parts.append(f"- Financial: {financial_topic}")
+        
+        return "\n".join(context_parts)
+    
+    def _parse_cross_domain_analysis(self, analysis_text: str) -> Dict[str, Any]:
+        """Parse LLM cross-domain analysis response"""
+        
+        result = {
+            "synergies": [],
+            "conflicts": [],
+            "investment_implications": [],
+            "regulatory_considerations": []
+        }
+        
+        current_section = None
+        
+        for line in analysis_text.split('\n'):
+            line = line.strip()
+            
+            if line.startswith('SYNERGIES:'):
+                current_section = "synergies"
+            elif line.startswith('CONFLICTS:'):
+                current_section = "conflicts"
+            elif line.startswith('INVESTMENT IMPLICATIONS:'):
+                current_section = "investment_implications"
+            elif line.startswith('REGULATORY CONSIDERATIONS:'):
+                current_section = "regulatory_considerations"
+            elif line.startswith('- ') and current_section:
+                result[current_section].append(line[2:])
+        
+        return result
+    
+    def _generate_fallback_cross_domain_analysis(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate fallback cross-domain analysis when LLM fails"""
         
         return {
-            "synergies": self._identify_synergies(medical_findings, financial_findings),
-            "conflicts": self._identify_conflicts(medical_findings, financial_findings),
-            "investment_implications": self._analyze_investment_implications(medical_findings, financial_findings),
-            "regulatory_considerations": self._analyze_regulatory_overlap(medical_findings, financial_findings)
+            "synergies": self._identify_synergies_fallback(medical_findings, financial_findings),
+            "conflicts": self._identify_conflicts_fallback(medical_findings, financial_findings),
+            "investment_implications": self._analyze_investment_implications_fallback(medical_findings, financial_findings),
+            "regulatory_considerations": self._analyze_regulatory_overlap_fallback(medical_findings, financial_findings)
         }
     
-    def _identify_synergies(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
-        """Identify synergies between medical and financial findings"""
+    def _identify_synergies_fallback(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
+        """Fallback synergy identification"""
         
         synergies = []
         
@@ -1151,8 +1662,8 @@ class DocumentCreator(BaseAgent):
         
         return synergies
     
-    def _identify_conflicts(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
-        """Identify conflicts between domains"""
+    def _identify_conflicts_fallback(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
+        """Fallback conflict identification"""
         
         conflicts = []
         
@@ -1165,8 +1676,8 @@ class DocumentCreator(BaseAgent):
         
         return conflicts
     
-    def _analyze_investment_implications(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
-        """Analyze investment implications"""
+    def _analyze_investment_implications_fallback(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
+        """Fallback investment implications analysis"""
         
         implications = []
         
@@ -1180,8 +1691,8 @@ class DocumentCreator(BaseAgent):
         
         return implications
     
-    def _analyze_regulatory_overlap(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
-        """Analyze regulatory considerations"""
+    def _analyze_regulatory_overlap_fallback(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
+        """Fallback regulatory overlap analysis"""
         
         regulatory_items = []
         
@@ -1196,7 +1707,107 @@ class DocumentCreator(BaseAgent):
         return regulatory_items
     
     def _generate_recommendations(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
-        """Generate actionable recommendations"""
+        """Generate intelligent recommendations using LLM"""
+        
+        # Prepare context for recommendations
+        context = self._prepare_recommendations_context(medical_findings, financial_findings)
+        
+        prompt = f"""
+        Generate actionable, strategic recommendations based on this research analysis:
+        
+        {context}
+        
+        Requirements:
+        - Strategic and actionable recommendations
+        - Consider both medical and financial implications
+        - Address identified risks and opportunities
+        - Executive-level audience
+        - 5-8 specific recommendations
+        - Prioritize by impact and feasibility
+        
+        Format each recommendation as:
+        - [Recommendation]: [Brief justification]
+        """
+        
+        try:
+            response = self.model.invoke(prompt)
+            return self._parse_recommendations(response.content)
+        except Exception as e:
+            self.logger.error(f"LLM recommendations generation failed: {e}")
+            return self._generate_fallback_recommendations(medical_findings, financial_findings)
+    
+    def _prepare_recommendations_context(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> str:
+        """Prepare context for recommendations generation"""
+        
+        context_parts = []
+        
+        # Key findings summary
+        context_parts.append("KEY FINDINGS SUMMARY:")
+        
+        # Medical findings
+        medical_key_findings = medical_findings.get("key_findings", [])
+        if medical_key_findings:
+            context_parts.append("Medical:")
+            context_parts.extend([f"- {finding}" for finding in medical_key_findings[:3]])
+        
+        # Financial findings
+        financial_key_findings = financial_findings.get("key_findings", [])
+        if financial_key_findings:
+            context_parts.append("Financial:")
+            context_parts.extend([f"- {finding}" for finding in financial_key_findings[:3]])
+        
+        context_parts.append("")
+        
+        # Opportunities and risks
+        context_parts.append("OPPORTUNITIES AND RISKS:")
+        
+        # Medical opportunities
+        clinical_insights = medical_findings.get("clinical_insights", {})
+        if clinical_insights.get("trials"):
+            context_parts.append(f"- Clinical opportunities: {len(clinical_insights['trials'])} potential studies")
+        
+        # Financial opportunities
+        market_analysis = financial_findings.get("market_analysis", {})
+        if market_analysis.get("opportunities"):
+            context_parts.append(f"- Market opportunities: {len(market_analysis['opportunities'])} identified")
+        
+        # Risk factors
+        medical_risks = medical_findings.get("drug_interactions", {}).get("safety_considerations", [])
+        financial_risks = financial_findings.get("risk_assessment", {}).get("risks", [])
+        
+        if medical_risks:
+            context_parts.append(f"- Medical risks: {len(medical_risks)} safety considerations")
+        if financial_risks:
+            context_parts.append(f"- Financial risks: {len(financial_risks)} risk factors")
+        
+        # Research quality
+        context_parts.append("")
+        context_parts.append("RESEARCH QUALITY:")
+        
+        medical_quality = medical_findings.get("quality_indicators", {})
+        financial_quality = financial_findings.get("quality_indicators", {})
+        
+        if medical_quality.get("avg_relevance"):
+            context_parts.append(f"- Medical research quality: {medical_quality['avg_relevance']:.2f}/1.0")
+        if financial_quality.get("avg_relevance"):
+            context_parts.append(f"- Financial research quality: {financial_quality['avg_relevance']:.2f}/1.0")
+        
+        return "\n".join(context_parts)
+    
+    def _parse_recommendations(self, recommendations_text: str) -> List[str]:
+        """Parse LLM recommendations response"""
+        
+        recommendations = []
+        
+        for line in recommendations_text.split('\n'):
+            line = line.strip()
+            if line.startswith('- '):
+                recommendations.append(line[2:])
+        
+        return recommendations
+    
+    def _generate_fallback_recommendations(self, medical_findings: Dict[str, Any], financial_findings: Dict[str, Any]) -> List[str]:
+        """Generate fallback recommendations when LLM fails"""
         
         recommendations = []
         
