@@ -3,7 +3,7 @@ from typing import Literal, Optional, Any
 import os
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
-from config_loader import load_config
+from .config_loader import load_config
 
 class ConfigLoader():
     def __init__(self):
