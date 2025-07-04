@@ -2,6 +2,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any
 import os
+from pathlib import Path
 
 class Settings(BaseSettings):
     """Application configuration using Pydantic BaseSettings"""
@@ -9,6 +10,13 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     langchain_api_key: Optional[str] = Field(None, env="LANGCHAIN_API_KEY")
+    
+    def model_post_init(self, __context) -> None:
+        """Ensure environment variables are set after initialization"""
+        # Set environment variables so that LangChain and other libraries can access them
+        os.environ["OPENAI_API_KEY"] = self.openai_api_key
+        if self.langchain_api_key:
+            os.environ["LANGCHAIN_API_KEY"] = self.langchain_api_key
     
     # Model Configuration
     supervisor_model: str = Field("gpt-4", env="SUPERVISOR_MODEL")
@@ -37,7 +45,10 @@ class Settings(BaseSettings):
     test_mode: bool = Field(False, env="TEST_MODE")
     
     class Config:
-        env_file = ".env"
+        # Get the project root directory (where .env should be located)
+        _current_file = Path(__file__).resolve()
+        _project_root = _current_file.parent.parent  # Go up from config/ to project root
+        env_file = _project_root / ".env"
         case_sensitive = False
         
     def get_model_config(self, agent_type: str) -> Dict[str, Any]:
